@@ -544,6 +544,8 @@ class FTS3CompletionMessageTransferStatusReport(Fts3TransferStatusReport):
                 self.staging_finished_at = None
                 self.source_rse_id = src_rse_id
                 self.err_msg = get_transfer_error(self.state, reason)
+                if self.err_msg and self._file_metadata.get('src_type') == "TAPE":
+                    self.err_msg = '[TAPE SOURCE] ' + self.err_msg
                 self.attributes = self._find_attribute_updates(
                     request=request,
                     new_state=new_state,
@@ -624,6 +626,8 @@ class FTS3ApiTransferStatusReport(Fts3TransferStatusReport):
                 self.staging_finished_at = datetime.datetime.strptime(file_response['staging_finished'], '%Y-%m-%dT%H:%M:%S') if file_response['staging_finished'] else None
                 self.source_rse_id = src_rse_id
                 self.err_msg = get_transfer_error(self.state, reason)
+                if self.err_msg and self._file_metadata.get('src_type') == "TAPE":
+                    self.err_msg = '[TAPE SOURCE] ' + self.err_msg
                 self.attributes = self._find_attribute_updates(
                     request=request,
                     new_state=new_state,
@@ -634,14 +638,14 @@ class FTS3ApiTransferStatusReport(Fts3TransferStatusReport):
                 logger(logging.WARNING, "Response %s with transfer id %s is different from the request transfer id %s, will not update" % (request_id, transfer_id, request['external_id']))
             else:
                 logger(logging.DEBUG, "Request %s is already in %s state, will not update" % (request_id, new_state))
-        else:
-            logger(logging.DEBUG, "No state change computed for %s. Skipping request update." % request_id)
 
 
 class FTS3Transfertool(Transfertool):
     """
     FTS3 implementation of a Rucio transfertool
     """
+
+    external_name = 'fts3'
 
     def __init__(self, external_host, oidc_account=None, vo=None, group_bulk=1, group_policy='rule', source_strategy=None,
                  max_time_in_queue=None, bring_online=43200, default_lifetime=172800, archive_timeout_override=None,
@@ -701,28 +705,32 @@ class FTS3Transfertool(Transfertool):
         if config_get_bool('common', 'multi_vo', False, None):
             vo = transfer_path[-1].rws.scope.vo
 
-        all_hops_have_an_fts_attr = True
+        sub_path = []
         fts_hosts = []
         for hop in transfer_path:
-            fts_hosts = hop.dst.rse.attributes.get('fts', None)
+            src_and_dst_have_fts_attribute = hop.src.rse.attributes.get('fts', None) is not None and hop.dst.rse.attributes.get('fts', None) is not None
+            hosts = hop.dst.rse.attributes.get('fts', None)
             if hop.src.rse.attributes.get('sign_url', None) == 'gcs':
-                fts_hosts = hop.src.rse.attributes.get('fts', None)
-            fts_hosts = fts_hosts.split(",") if fts_hosts else []
+                hosts = hop.src.rse.attributes.get('fts', None)
+            hosts = hosts.split(",") if hosts else []
 
-            if not fts_hosts:
-                all_hops_have_an_fts_attr = False
+            if src_and_dst_have_fts_attribute and hosts:
+                fts_hosts = hosts
+                sub_path.append(hop)
+            else:
                 break
 
-        if not fts_hosts or not all_hops_have_an_fts_attr:
-            logger(logging.WARN, 'FTS3Transfertool cannot be used to submit transfer {}: some hops do not have an fts attribute'.format([str(hop) for hop in transfer_path]))
-            return None
+        if len(sub_path) < len(transfer_path):
+            logger(logging.INFO, 'FTS3Transfertool can only submit {} hops from {}'.format(len(sub_path), [str(hop) for hop in transfer_path]))
 
-        oidc_account = None
-        if all(oidc_supported(t) for t in transfer_path):
-            logger(logging.DEBUG, 'OAuth2/OIDC available for transfer {}'.format([str(hop) for hop in transfer_path]))
-            oidc_account = transfer_path[-1].rws.account
-
-        return TransferToolBuilder(cls, external_host=fts_hosts[0], oidc_account=oidc_account, vo=vo)
+        if sub_path:
+            oidc_account = None
+            if all(oidc_supported(t) for t in sub_path):
+                logger(logging.DEBUG, 'OAuth2/OIDC available for transfer {}'.format([str(hop) for hop in sub_path]))
+                oidc_account = transfer_path[-1].rws.account
+            return sub_path, TransferToolBuilder(cls, external_host=fts_hosts[0], oidc_account=oidc_account, vo=vo)
+        else:
+            return [], None
 
     def group_into_submit_jobs(self, transfer_paths):
         jobs = bulk_group_transfers(
