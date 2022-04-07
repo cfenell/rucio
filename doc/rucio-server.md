@@ -5,12 +5,12 @@ Setting up a Rucio server
 # What is the Rucio server?
 
 This instruction is about how to install the central Rucio server and
-get it up and running. This server is a WSGI application written in
-Python and has to run on a WSGI capable web server such as Apache. The
-server provides a REST API and interacts with a database. The actual
-tasks are then performed by intermediate-level daemons. These read the
-database and can interact with low level components including
-storage.
+get it up and running. This server is a Web Server Gateway Interface
+(WSGI) Python application and has to run on a WSGI capable web server,
+such as Apache with enabled mod_wsgi. The server provides a REST API
+and interacts with a database. The actual tasks are then performed by
+intermediate-level daemons. These read the database and can interact
+with lower level components including storage managers (FTS, etc).
 
 This architecture gives big flexibility in choices of authentication,
 transfer protocols, and storage systems, and no special software has
@@ -18,49 +18,48 @@ to run on the storage systems as long as they provide a supported
 protocol and authN/authZ mechanism. However, this can also make
 first-time setup a nontrivial task. The Rucio developers recommend all
 users to run the Docker containers they provide. To learn about setup
-and configuration however, it may still be preferrable to install the
+and configuration, however, it may still be preferrable to install the
 Rucio server and necessary daemons from source. Another reason is that
 the provided containers and instructions for use are all built on
 CentOS, which may be incompatible with more up to date host operating
 systems. In the following we describe how to deploy a Rucio
-server on an Ubuntu 20.04 LTS or 21.10 server system.
+server on an Ubuntu server system.
 
 # Prerequisites
 
-In order to install Rucio from source you must have a system with
-Python, and the usual setup and compilation tools (build-essential, etc). We assume this to be
-available. Installing in a Python virtual environment may be
-preferrable for compatibility of dependencies. In the test setup
-described here, we instead started a fresh LXD container and installed
-all packages system-wide. Both the host and the container run Ubuntu
-20.04 LTS.
+In order to install Rucio from source, you must have a system with
+Python and the usual setup and compilation tools (build-essential,
+etc). We assume this to be available. Installing in a Python virtual
+environment may be preferrable for compatibility of dependencies. In
+the test setup described here, we instead started a fresh LXD
+container and installed all packages system-wide. Versions of Ubuntu
+Server used include 20.04 LTS and 21.10.
+
 
 # Dependencies
 
 ## Install a web server
 
-A web server with support for the Python Web Server Gateway Interface
-(WSGI) is necessary. We adapted the Apache configuration files from
-the Dockers to the Debian/Ubuntu standard, as described below. Several
-optional Apache modules must be installed and configured for Rucio to
-work. Thus, as root/sudo:
-    apt install apache2 libapache2-mod-wsgi-py3 gridsite 
+A web server with support for Python WSGI is necessary. We installed
+Apache and adapted the configuration files from the Dockers to the
+Debian/Ubuntu standard, as described below. Several optional Apache
+modules must be installed and configured for Rucio to work. Thus, as
+root/sudo: 
+
+    apt install apache2 libapache2-mod-wsgi-py3 gridsite
 
 Then enable the required Apache modules by creating symlinks in
 mods-enabled. a2enmod as root does this for you:
 
 	$sudo a2enmod wsgi
 
-Repeat this step for other required modules: 
+Repeat this step for other required modules. These include at least: 
 
     authn, cache_disk, headers, proxy, rewrite, ssl, zgridsite
 
-(CHECKME which required modules are not installed and/or not enabled by default?)
-
-
 ## Install required Python packages
 
-The Rucio distribution comes with a dependencies.txt file and setup
+The Rucio distribution comes with a *dependencies.txt* file and setup
 will try to install the listed dependencies automatically as
 usual. Some of the packages may already be included in a standard
 Ubuntu install, but however some packages on PyPI or in the Ubuntu
@@ -75,12 +74,12 @@ replaced separately.
    
     $sudo pip3 install --upgrade requests==2.24.0
 	
-(? FIXME any other dependencies to replace?)
-	
+FIXME: any other dependencies to replace?
+
 ## Install database and support
 
 The database is the heart of Rucio operations.  Rucio supports several
-popular databases: MySQL, PostgreSQL, etc. PostgreSQL is a good choice
+popular SQL databases: MySQL, PostgreSQL, etc. PostgreSQL is a good choice
 and can be installed like so
 
     $sudo apt install postgresql postgresql-contrib python3-psycopg2
@@ -89,7 +88,9 @@ and can be installed like so
 
 For https and certificate based authentication to work it is of
 supreme importance to get SSL certificates and certificate authorites
-(CAs) right.  (Checkme: required packages)
+(CAs) right.
+
+Checkme: required packages
 
 After a successful install, CA certificates should be stored in
 
@@ -104,8 +105,6 @@ intermediate certificates) and unencrypted private key in for example
 	 /etc/grid-security/hostcert.pem
 	 /etc/grid-security/hostkey.pem
 	 
-(Checkme: file permissions?)
-
 For certificate-based authentication, also get a personal certificate
 (or export the one you have) and make sure it is saved on the system where the client will run as
     
@@ -113,12 +112,12 @@ For certificate-based authentication, also get a personal certificate
 	 $HOME/.globus/userkey.pem
 	 
 This personal certificate will later be used to create a short-lived
-so called grid proxy certificate for user authentication. With CAs
-properly configured the proxy certificate will allow the https
-connection to transfer your identity (certificate Distinguished Name)
-securely to the server.
+*grid proxy certificate* for user authentication. With CAs properly
+configured, the proxy certificate will allow the https connection to
+transfer your identity (certificate Distinguished Name) securely to
+the server.
 
-(? Checkme: instructions on certificate export and **grid-proxy-init**)
+Add: instructions on certificate export and **grid-proxy-init**
 
 # Get the Rucio software
 
@@ -301,8 +300,7 @@ should be set in **rucio.cfg** [clients]. Also make sure that any
 firewalls allow connections between client and server.
 
 With your client certificate and certificate utility software properly
-set up (?Fixme find some documentation), generate a proxy certificate
-with
+set up, generate a proxy certificate with
 
     $grid-proxy-init
 	
@@ -367,16 +365,12 @@ For testing it may also be necessary to remove the default per-user quota of **r
 
 ## Add a protocol to the RSE
 
-In order to associate the defined RSE with actual physical storage, at least one **protocol** has to be added to the empty protocol section of the RSE configuration. Many different file transfer implementations are supported and the one recommended by the developers is **gfal**, the multi-protocol Grid File Access Library. Gfal is however very CentOS-centric and I had no luck with the Debian packages nor installing from source. So in this example the WebDAV implementation is shown instead. The WebDAV access module was debugged by the author and allows uploading to a WebDAV-enabled dCache server with X509 authentication.
+In order to associate the defined RSE with actual physical storage, at least one **protocol** has to be added to the empty protocol section of the RSE configuration. Many different file transfer implementations are supported and the one recommended by the developers is **gfal**, the multi-protocol Grid File Access Library. If you want to install **gfal** on Debian or Ubuntu, see the separate document (gfal2.md). 
 
-The **rucio-admin add-protocol** command is used. Required arguments include hostname, scheme and port of the storage server, Python implementation (module name) to use for file transfer, etc. 
+The **rucio-admin add-protocol** command is used to add the storage. Required arguments include hostname, scheme and port of the storage server, Python implementation (module name) to use for file transfer, etc. As an example, this configures a gridFTP enabled dCache server as storage for the RSE *E3D_DCACHE*:
 
-The following configuration corresponds to a WebDAV server accessible at
-    
-    https://my.storage.server:8443/my/storage/user
-
-    $rucio-admin -v -u root rse add-protocol --hostname my.storage.server --scheme https --impl rucio.rse.protocols.webdav.Default --prefix '/my/storage/user' --port 8443 --domain-json '{"lan": {"read": 0, "write": 0, "delete": 0}, "wan": {"read": 1, "write": 1, "delete": 1, "third_party_copy": 1}}'
-
+    rucio-admin -v -u root rse add-protocol --hostname store1.eiscat3d.se --scheme gsiftp --impl rucio.rse.protocols.gfal.Default --port 2811 --prefix '/home/tester/' --extended-attributes-json '{"user":" archive"}' --domain-json '{"lan": {"read": 0, "write": 0, "delete": 0}, "wan": {"read": 1, "write": 1, "delete": 1, "third_party_copy": 1}}' E3D_DCACHE
+ 
 An "ugly" part of this is that the RSE must be configured as **writable from the wan domain**. This is not enabled by default and the only way to configure it at present is to provide the above extra configuration in JSON format.
 
 ## Test the RSE
@@ -586,5 +580,3 @@ Note: **auth** should be added to [api] endpoints config
 
     </VirtualHost>
 </IfModule>
-
-
