@@ -204,6 +204,7 @@ def requeue_and_archive(request, source_ranking_update=True, retry_protocol_mism
                         else:
                             new_req['sources'][i]['ranking'] -= 1
                         new_req['sources'][i]['is_using'] = False
+            new_req.pop('state', None)
             queue_requests([new_req], session=session, logger=logger)
             return new_req
     else:
@@ -273,7 +274,8 @@ def queue_requests(requests, session=None, logger=logging.log):
                 return obj.internal
             raise TypeError('Could not serialise object %r' % obj)
 
-        request['state'] = RequestState.PREPARING if preparer_enabled else RequestState.QUEUED
+        if 'state' not in request:
+            request['state'] = RequestState.PREPARING if preparer_enabled else RequestState.QUEUED
 
         new_request = {'request_type': request['request_type'],
                        'scope': request['scope'],
@@ -291,6 +293,8 @@ def queue_requests(requests, session=None, logger=logging.log):
                        'priority': request['attributes'].get('priority', None),
                        'requested_at': request.get('requested_at', None),
                        'retry_count': request['retry_count']}
+        if 'transfertool' in request:
+            new_request['transfertool'] = request['transfertool']
         if 'previous_attempt_id' in request and 'retry_count' in request:
             new_request['previous_attempt_id'] = request['previous_attempt_id']
             new_request['id'] = request['request_id']
@@ -356,6 +360,7 @@ def list_transfer_requests_and_source_replicas(
         activity=None,
         older_than=None,
         rses=None,
+        multihop_rses=None,
         request_type=RequestType.TRANSFER,
         request_state=None,
         ignore_availability=False,
@@ -371,6 +376,7 @@ def list_transfer_requests_and_source_replicas(
     :param activity:           Activity to be selected.
     :param older_than:         Only select requests older than this DateTime.
     :param rses:               List of rse_id to select requests.
+    :param multihop_rses:               List of rse_id allowed to be used for multihop
     :param request_type:       Filter on the given request type.
     :param request_state:      Filter on the given request state
     :param transfertool:       The transfer tool as specified in rucio.cfg.
@@ -473,18 +479,18 @@ def list_transfer_requests_and_source_replicas(
                                                    sub_requests.c.name == models.RSEFileAssociation.name,
                                                    models.RSEFileAssociation.state == ReplicaState.AVAILABLE,
                                                    sub_requests.c.dest_rse_id != models.RSEFileAssociation.rse_id)) \
-        .with_hint(models.RSEFileAssociation, "+ index(replicas REPLICAS_PK)", 'oracle') \
+        .with_hint(models.RSEFileAssociation, "INDEX(REPLICAS REPLICAS_PK)", 'oracle') \
         .outerjoin(models.RSE, and_(models.RSE.id == models.RSEFileAssociation.rse_id,
                                     models.RSE.deleted == false())) \
         .outerjoin(models.Source, and_(sub_requests.c.id == models.Source.request_id,
                                        models.RSE.id == models.Source.rse_id)) \
-        .with_hint(models.Source, "+ index(sources SOURCES_PK)", 'oracle') \
+        .with_hint(models.Source, "INDEX(SOURCES SOURCES_PK)", 'oracle') \
         .outerjoin(models.Distance, and_(sub_requests.c.dest_rse_id == models.Distance.dest_rse_id,
                                          models.RSEFileAssociation.rse_id == models.Distance.src_rse_id)) \
-        .with_hint(models.Distance, "+ index(distances DISTANCES_PK)", 'oracle')
+        .with_hint(models.Distance, "INDEX(DISTANCES DISTANCES_PK)", 'oracle')
 
     # if transfertool specified, select only the requests where the source rses are set up for the transfer tool
-    if transfertool:
+    if transfertool and not multihop_rses:
         query = query.subquery()
         query = session.query(query) \
             .join(models.RSEAttrAssociation, models.RSEAttrAssociation.rse_id == query.c.source_rse_id) \
@@ -552,7 +558,7 @@ def fetch_paths(request_id, session=None):
 @read_session
 def get_next(request_type, state, limit=100, older_than=None, rse_id=None, activity=None,
              total_workers=0, worker_number=0, mode_all=False, hash_variable='id',
-             activity_shares=None, transfertool=None, session=None):
+             activity_shares=None, include_dependent=True, transfertool=None, session=None):
     """
     Retrieve the next requests matching the request type and state.
     Workers are balanced via hashing to reduce concurrency on database.
@@ -568,6 +574,7 @@ def get_next(request_type, state, limit=100, older_than=None, rse_id=None, activ
     :param mode_all:          If set to True the function returns everything, if set to False returns list of dictionaries  {'request_id': x, 'external_host': y, 'external_id': z}.
     :param hash_variable:     The variable to use to perform the partitioning. By default it uses the request id.
     :param activity_shares:   Activity shares dictionary, with number of requests
+    :param include_dependent: If true, includes transfers which have a previous hop dependency on other transfers
     :param transfertool:      The transfer tool as specified in rucio.cfg.
     :param session:           Database session to use.
     :returns:                 Request as a dictionary.
@@ -604,6 +611,13 @@ def get_next(request_type, state, limit=100, older_than=None, rse_id=None, activ
                                                  .filter(models.Request.state.in_(state))\
                                                  .filter(models.Request.request_type.in_(request_type))\
                                                  .order_by(asc(models.Request.updated_at))
+        if not include_dependent:
+            # filter out transfers which depend on some other "previous hop" requests.
+            # In particular, this is used to avoid multiple finishers trying to archive different
+            # transfers from the same path and thus having concurrent deletion of same rows from
+            # the transfer_hop table.
+            query = query.outerjoin(models.TransferHop, models.TransferHop.next_hop_request_id == models.Request.id) \
+                .filter(models.TransferHop.next_hop_request_id == null())
 
         if isinstance(older_than, datetime.datetime):
             query = query.filter(models.Request.updated_at < older_than)

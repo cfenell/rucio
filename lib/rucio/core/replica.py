@@ -191,7 +191,7 @@ def __exist_replicas(rse_id, replicas, session=None):
                                       func.max(case([(models.BadReplicas.state == BadFilesStatus.SUSPICIOUS, 0),
                                                      (models.BadReplicas.state == BadFilesStatus.BAD, 1)],
                                                     else_=0))).\
-                    with_hint(models.RSEFileAssociation, "+ index(replicas REPLICAS_PATH_IDX", 'oracle').\
+                    with_hint(models.RSEFileAssociation, "INDEX(REPLICAS REPLICAS_PATH_IDX", 'oracle').\
                     outerjoin(models.BadReplicas,
                               and_(models.RSEFileAssociation.scope == models.BadReplicas.scope,
                                    models.RSEFileAssociation.name == models.BadReplicas.name,
@@ -513,39 +513,35 @@ def get_pfn_to_rse(pfns, vo='def', session=None):
 
 
 @read_session
-def get_bad_replicas_backlog(force_refresh=False, session=None):
+def get_bad_replicas_backlog(session=None):
     """
     Get the replica backlog by RSE.
 
-    :param force_refresh:      Boolean to choose if the cached value must be refreshed.
     :param session:            The database session in use.
 
     :returns: a list of dictionary {'rse_id': cnt_bad_replicas}.
     """
-    result = REGION.get('bad_replicas_backlog')
-    if result is NO_VALUE or force_refresh:
-        schema_dot = '%s.' % DEFAULT_SCHEMA_NAME if DEFAULT_SCHEMA_NAME else ''
-        if session.bind.dialect.name == 'oracle':
-            # The filter(text...)) is needed otherwise, SQLA uses bind variables and the index is not used.
-            query = session.query(func.count(models.RSEFileAssociation.rse_id), models.RSEFileAssociation.rse_id).\
-                with_hint(models.RSEFileAssociation, "+ index(replicas REPLICAS_STATE_IDX)", 'oracle').\
-                filter(text("CASE WHEN (%sreplicas.state != 'A') THEN %sreplicas.rse_id END IS NOT NULL" % (schema_dot,
-                                                                                                            schema_dot))). \
-                filter(models.RSEFileAssociation.state == ReplicaState.BAD)
-        else:
-            query = session.query(func.count(models.RSEFileAssociation.rse_id), models.RSEFileAssociation.rse_id).\
-                filter(models.RSEFileAssociation.state == ReplicaState.BAD)
+    schema_dot = '%s.' % DEFAULT_SCHEMA_NAME if DEFAULT_SCHEMA_NAME else ''
+    if session.bind.dialect.name == 'oracle':
+        # The filter(text...)) is needed otherwise, SQLA uses bind variables and the index is not used.
+        query = session.query(func.count(models.RSEFileAssociation.rse_id), models.RSEFileAssociation.rse_id).\
+            with_hint(models.RSEFileAssociation, "INDEX(REPLICAS REPLICAS_STATE_IDX)", 'oracle').\
+            filter(text("CASE WHEN (%sreplicas.state != 'A') THEN %sreplicas.rse_id END IS NOT NULL" % (schema_dot,
+                                                                                                        schema_dot))). \
+            filter(models.RSEFileAssociation.state == ReplicaState.BAD)
+    else:
+        query = session.query(func.count(models.RSEFileAssociation.rse_id), models.RSEFileAssociation.rse_id).\
+            filter(models.RSEFileAssociation.state == ReplicaState.BAD)
 
-        query = query.join(models.DataIdentifier,
-                           and_(models.DataIdentifier.scope == models.RSEFileAssociation.scope,
-                                models.DataIdentifier.name == models.RSEFileAssociation.name)).\
-            filter(models.DataIdentifier.availability != DIDAvailability.LOST).\
-            group_by(models.RSEFileAssociation.rse_id)
+    query = query.join(models.DataIdentifier,
+                       and_(models.DataIdentifier.scope == models.RSEFileAssociation.scope,
+                            models.DataIdentifier.name == models.RSEFileAssociation.name)).\
+        filter(models.DataIdentifier.availability != DIDAvailability.LOST).\
+        group_by(models.RSEFileAssociation.rse_id)
 
-        result = dict()
-        for cnt, rse_id in query.all():
-            result[rse_id] = cnt
-        REGION.set('bad_replicas_backlog', result)
+    result = dict()
+    for cnt, rse_id in query.all():
+        result[rse_id] = cnt
     return result
 
 
@@ -567,7 +563,7 @@ def list_bad_replicas(limit=10000, thread=None, total_threads=None, rses=None, s
         query = session.query(models.RSEFileAssociation.scope,
                               models.RSEFileAssociation.name,
                               models.RSEFileAssociation.rse_id).\
-            with_hint(models.RSEFileAssociation, "+ index(replicas REPLICAS_STATE_IDX)", 'oracle').\
+            with_hint(models.RSEFileAssociation, "INDEX(REPLICAS REPLICAS_STATE_IDX)", 'oracle').\
             filter(text("CASE WHEN (%sreplicas.state != 'A') THEN %sreplicas.rse_id END IS NOT NULL" % (schema_dot,
                                                                                                         schema_dot))). \
             filter(models.RSEFileAssociation.state == ReplicaState.BAD)
