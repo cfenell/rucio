@@ -68,10 +68,8 @@ to use the Rucio *gfal.py* transfer plugin. However, you may want the
 works. These commands are simply Python scripts wrapping the *gfal2*
 library.  Install them in the same way:
 
-    git clone git@github.com:cern-fts/gfal2-util
-   
+    git clone git@github.com:cern-fts/gfal2-util 
     cd gfal2-util
-   
     pip3 install .
    
    
