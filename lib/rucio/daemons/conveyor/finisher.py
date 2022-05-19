@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2015-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,23 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Wen Guan <wen.guan@cern.ch>, 2015-2016
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2015-2020
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2015-2018
-# - Martin Barisits <martin.barisits@cern.ch>, 2015-2022
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2017-2020
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018
-# - Robert Illingworth <illingwo@fnal.gov>, 2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Brandon White <bjwhite@fnal.gov>, 2019
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2020-2021
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Matt Snyder <msnyder@bnl.gov>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
 
 """
 Conveyor finisher is a daemon to update replicas and rules based on requests.
@@ -57,7 +40,7 @@ from rucio.core import request as request_core, replica as replica_core
 from rucio.core.config import items
 from rucio.core.monitor import record_timer, record_counter
 from rucio.core.rse import list_rses
-from rucio.daemons.conveyor.common import run_conveyor_daemon
+from rucio.daemons.common import run_daemon
 from rucio.db.sqla.constants import RequestState, RequestType, ReplicaState, BadFilesStatus
 from rucio.db.sqla.session import transactional_session
 from rucio.rse import rsemanager
@@ -140,7 +123,7 @@ def finisher(once=False, sleep_time=60, activities=None, bulk=100, db_bulk=1000,
         activities.sort()
         executable += '--activities ' + str(activities)
 
-    run_conveyor_daemon(
+    run_daemon(
         once=once,
         graceful_stop=graceful_stop,
         executable=executable,
@@ -340,7 +323,7 @@ def __check_suspicious_files(req, suspicious_patterns, logger=logging.log):
                 break
 
         if is_suspicious:
-            reason = 'Reported by conveyor'
+            reason = req['err_msg'][:255]
             urls = request_core.get_sources(req['request_id'], rse_id=req['source_rse_id'])
             if urls:
                 pfns = []

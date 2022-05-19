@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2013-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,28 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2013-2021
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2013-2017
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2014-2020
-# - Martin Barisits <martin.barisits@cern.ch>, 2014-2022
-# - Wen Guan <wen.guan@cern.ch>, 2014-2016
-# - Joaquín Bogado <jbogado@linti.unlp.edu.ar>, 2015-2019
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2016-2021
-# - Joaquin Bogado <jbogadog@cern.ch>, 2017
-# - Igor Mandrichenko <rucio@fermicloud055.fnal.gov>, 2018
-# - Robert Illingworth <illingwo@fnal.gov>, 2018
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018-2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Brandon White <bjwhite@fnal.gov>, 2019
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Matt Snyder <msnyder@bnl.gov>, 2021
-# - Sahan Dilshan <32576163+sahandilshan@users.noreply.github.com>, 2021
-# - Nick Smith <nick.smith@cern.ch>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Rob Barnsley <rob.barnsley@skao.int>, 2021-2022
 
 import datetime
 import json
@@ -41,7 +19,6 @@ import logging
 import traceback
 from collections import namedtuple
 from configparser import NoOptionError, NoSectionError
-from itertools import filterfalse
 from typing import TYPE_CHECKING
 
 from six import string_types
@@ -52,27 +29,26 @@ from sqlalchemy.sql.expression import asc, true, false, null
 
 from rucio.common.config import config_get_bool, config_get
 from rucio.common.exception import RequestNotFound, RucioException, UnsupportedOperation
-from rucio.common.rse_attributes import RseData
 from rucio.common.types import InternalAccount, InternalScope
 from rucio.common.utils import generate_uuid, chunks, get_parsed_throttler_mode
 from rucio.core.message import add_message
 from rucio.core.monitor import record_counter, record_timer
-from rucio.core.rse import get_rse_name, get_rse_vo, get_rse_transfer_limits, get_rse_attribute
+from rucio.core.rse import get_rse_name, get_rse_vo, get_rse_transfer_limits, get_rse_attribute, RseData
 from rucio.db.sqla import models, filter_thread_work
 from rucio.db.sqla.constants import RequestState, RequestType, LockState, RequestErrMsg, ReplicaState
 from rucio.db.sqla.session import read_session, transactional_session, stream_session
-from rucio.db.sqla.util import create_temp_table
+from rucio.db.sqla.util import create_id_temp_table
 
 RequestAndState = namedtuple('RequestAndState', ['request_id', 'request_state'])
 
 if TYPE_CHECKING:
-    from typing import Any, Dict, Iterable, Iterator, List, Optional, Callable, Set, Union
+    from typing import Any, Dict, Iterator, List, Optional, Callable, Set, Union, Sequence
     from sqlalchemy.orm import Session
 
     RequestResult = Dict[str, Any]
     RequestResultOrState = Union[RequestResult, RequestAndState]
     RowIterator = Iterator[RequestResult]
-    ReduceFunction = Callable[[RowIterator], RowIterator]
+    LoggerFunction = Callable[..., Any]
 
 """
 The core request.py is specifically for handling requests.
@@ -232,9 +208,9 @@ def queue_requests(requests, session=None, logger=logging.log):
     for req in requests:
 
         if isinstance(req['attributes'], string_types):
-            req['attributes'] = json.loads(req['attributes'])
+            req['attributes'] = json.loads(req['attributes'] or '{}')
             if isinstance(req['attributes'], string_types):
-                req['attributes'] = json.loads(req['attributes'])
+                req['attributes'] = json.loads(req['attributes'] or '{}')
 
         if req['request_type'] == RequestType.TRANSFER:
             request_clause.append(and_(models.Request.scope == req['scope'],
@@ -391,59 +367,66 @@ def list_transfer_requests_and_source_replicas(
     if request_state is None:
         request_state = RequestState.QUEUED
 
-    sub_requests = session.query(models.Request.id,
-                                 models.Request.rule_id,
-                                 models.Request.scope,
-                                 models.Request.name,
-                                 models.Request.md5,
-                                 models.Request.adler32,
-                                 models.Request.bytes,
-                                 models.Request.activity,
-                                 models.Request.attributes,
-                                 models.Request.previous_attempt_id,
-                                 models.Request.dest_rse_id,
-                                 models.Request.retry_count,
-                                 models.Request.account,
-                                 models.Request.created_at,
-                                 models.Request.requested_at,
-                                 models.Request.priority,
-                                 models.Request.transfertool) \
-        .with_hint(models.Request, "INDEX(REQUESTS REQUESTS_TYP_STA_UPD_IDX)", 'oracle') \
-        .filter(models.Request.state == request_state) \
-        .filter(models.Request.request_type == request_type) \
-        .join(models.RSE, models.RSE.id == models.Request.dest_rse_id) \
-        .filter(models.RSE.deleted == false()) \
-        .outerjoin(models.TransferHop, models.TransferHop.next_hop_request_id == models.Request.id) \
-        .filter(models.TransferHop.next_hop_request_id == null()) \
-        .order_by(models.Request.created_at)
+    sub_requests = select(
+        models.Request.id,
+        models.Request.rule_id,
+        models.Request.scope,
+        models.Request.name,
+        models.Request.md5,
+        models.Request.adler32,
+        models.Request.bytes,
+        models.Request.activity,
+        models.Request.attributes,
+        models.Request.previous_attempt_id,
+        models.Request.dest_rse_id,
+        models.Request.retry_count,
+        models.Request.account,
+        models.Request.created_at,
+        models.Request.requested_at,
+        models.Request.priority,
+        models.Request.transfertool
+    ).with_hint(
+        models.Request, "INDEX(REQUESTS REQUESTS_TYP_STA_UPD_IDX)", 'oracle'
+    ).where(
+        models.Request.state == request_state,
+        models.Request.request_type == request_type
+    ).join(
+        models.RSE,
+        models.RSE.id == models.Request.dest_rse_id
+    ).where(
+        models.RSE.deleted == false()
+    ).outerjoin(
+        models.TransferHop,
+        models.TransferHop.next_hop_request_id == models.Request.id
+    ).where(
+        models.TransferHop.next_hop_request_id == null()
+    ).order_by(
+        models.Request.created_at
+    )
 
     if not ignore_availability:
-        sub_requests = sub_requests.filter(models.RSE.availability.in_((2, 3, 6, 7)))
+        sub_requests = sub_requests.where(models.RSE.availability.in_((2, 3, 6, 7)))
 
     if isinstance(older_than, datetime.datetime):
-        sub_requests = sub_requests.filter(models.Request.requested_at < older_than)
+        sub_requests = sub_requests.where(models.Request.requested_at < older_than)
 
     if activity:
-        sub_requests = sub_requests.filter(models.Request.activity == activity)
+        sub_requests = sub_requests.where(models.Request.activity == activity)
 
     # if a transfertool is specified make sure to filter for those requests and apply related index
     if transfertool:
-        sub_requests = sub_requests.filter(models.Request.transfertool == transfertool)
+        sub_requests = sub_requests.where(models.Request.transfertool == transfertool)
         sub_requests = sub_requests.with_hint(models.Request, "INDEX(REQUESTS REQUESTS_TYP_STA_TRA_ACT_IDX)", 'oracle')
     else:
         sub_requests = sub_requests.with_hint(models.Request, "INDEX(REQUESTS REQUESTS_TYP_STA_UPD_IDX)", 'oracle')
 
     use_temp_tables = config_get_bool('core', 'use_temp_tables', default=False)
     if rses and use_temp_tables:
-        temp_table_cls = create_temp_table(
-            "list_transfer_requests_and_source_replicas",
-            models.Column("rse_id", models.GUID()),
-            session=session,
-        )
+        temp_table_cls = create_id_temp_table("list_transfer_requests_and_source_replicas", session=session)
 
-        session.bulk_insert_mappings(temp_table_cls, [{'rse_id': rse_id} for rse_id in rses])
+        session.bulk_insert_mappings(temp_table_cls, [{'id': rse_id} for rse_id in rses])
 
-        sub_requests = sub_requests.join(temp_table_cls, temp_table_cls.rse_id == models.RSE.id)
+        sub_requests = sub_requests.join(temp_table_cls, temp_table_cls.id == models.RSE.id)
 
     sub_requests = filter_thread_work(session=session, query=sub_requests, total_threads=total_workers, thread_id=worker_number, hash_variable=partition_hash_var)
 
@@ -452,54 +435,69 @@ def list_transfer_requests_and_source_replicas(
 
     sub_requests = sub_requests.subquery()
 
-    query = session.query(sub_requests.c.id,
-                          sub_requests.c.rule_id,
-                          sub_requests.c.scope,
-                          sub_requests.c.name,
-                          sub_requests.c.md5,
-                          sub_requests.c.adler32,
-                          sub_requests.c.bytes,
-                          sub_requests.c.activity,
-                          sub_requests.c.attributes,
-                          sub_requests.c.previous_attempt_id,
-                          sub_requests.c.dest_rse_id,
-                          sub_requests.c.account,
-                          sub_requests.c.retry_count,
-                          sub_requests.c.priority,
-                          sub_requests.c.transfertool,
-                          sub_requests.c.requested_at,
-                          models.RSE.id.label("source_rse_id"),
-                          models.RSE.rse,
-                          models.RSEFileAssociation.path,
-                          models.Source.ranking.label("source_ranking"),
-                          models.Source.url.label("source_url"),
-                          models.Distance.ranking.label("distance_ranking")) \
-        .order_by(sub_requests.c.created_at) \
-        .outerjoin(models.RSEFileAssociation, and_(sub_requests.c.scope == models.RSEFileAssociation.scope,
-                                                   sub_requests.c.name == models.RSEFileAssociation.name,
-                                                   models.RSEFileAssociation.state == ReplicaState.AVAILABLE,
-                                                   sub_requests.c.dest_rse_id != models.RSEFileAssociation.rse_id)) \
-        .with_hint(models.RSEFileAssociation, "INDEX(REPLICAS REPLICAS_PK)", 'oracle') \
-        .outerjoin(models.RSE, and_(models.RSE.id == models.RSEFileAssociation.rse_id,
-                                    models.RSE.deleted == false())) \
-        .outerjoin(models.Source, and_(sub_requests.c.id == models.Source.request_id,
-                                       models.RSE.id == models.Source.rse_id)) \
-        .with_hint(models.Source, "INDEX(SOURCES SOURCES_PK)", 'oracle') \
-        .outerjoin(models.Distance, and_(sub_requests.c.dest_rse_id == models.Distance.dest_rse_id,
-                                         models.RSEFileAssociation.rse_id == models.Distance.src_rse_id)) \
-        .with_hint(models.Distance, "INDEX(DISTANCES DISTANCES_PK)", 'oracle')
+    stmt = select(
+        sub_requests.c.id,
+        sub_requests.c.rule_id,
+        sub_requests.c.scope,
+        sub_requests.c.name,
+        sub_requests.c.md5,
+        sub_requests.c.adler32,
+        sub_requests.c.bytes,
+        sub_requests.c.activity,
+        sub_requests.c.attributes,
+        sub_requests.c.previous_attempt_id,
+        sub_requests.c.dest_rse_id,
+        sub_requests.c.account,
+        sub_requests.c.retry_count,
+        sub_requests.c.priority,
+        sub_requests.c.transfertool,
+        sub_requests.c.requested_at,
+        models.RSE.id.label("source_rse_id"),
+        models.RSE.rse,
+        models.RSEFileAssociation.path,
+        models.Source.ranking.label("source_ranking"),
+        models.Source.url.label("source_url"),
+        models.Distance.ranking.label("distance_ranking")
+    ).order_by(
+        sub_requests.c.created_at
+    ).outerjoin(
+        models.RSEFileAssociation,
+        and_(sub_requests.c.scope == models.RSEFileAssociation.scope,
+             sub_requests.c.name == models.RSEFileAssociation.name,
+             models.RSEFileAssociation.state == ReplicaState.AVAILABLE,
+             sub_requests.c.dest_rse_id != models.RSEFileAssociation.rse_id)
+    ).with_hint(
+        models.RSEFileAssociation, "INDEX(REPLICAS REPLICAS_PK)", 'oracle'
+    ).outerjoin(
+        models.RSE,
+        and_(models.RSE.id == models.RSEFileAssociation.rse_id,
+             models.RSE.deleted == false())
+    ).outerjoin(
+        models.Source,
+        and_(sub_requests.c.id == models.Source.request_id,
+             models.RSE.id == models.Source.rse_id)
+    ).with_hint(
+        models.Source, "INDEX(SOURCES SOURCES_PK)", 'oracle'
+    ).outerjoin(
+        models.Distance,
+        and_(sub_requests.c.dest_rse_id == models.Distance.dest_rse_id,
+             models.RSEFileAssociation.rse_id == models.Distance.src_rse_id)
+    ).with_hint(
+        models.Distance, "INDEX(DISTANCES DISTANCES_PK)", 'oracle'
+    )
 
     # if transfertool specified, select only the requests where the source rses are set up for the transfer tool
     if transfertool and not multihop_rses:
-        query = query.subquery()
-        query = session.query(query) \
-            .join(models.RSEAttrAssociation, models.RSEAttrAssociation.rse_id == query.c.source_rse_id) \
-            .filter(models.RSEAttrAssociation.key == 'transfertool',
-                    models.RSEAttrAssociation.value.like('%' + transfertool + '%'))
+        stmt = stmt.join(
+            models.RSEAttrAssociation, models.RSEAttrAssociation.rse_id == models.RSE.id,  # source_rse_id
+        ).where(
+            models.RSEAttrAssociation.key == 'transfertool',
+            models.RSEAttrAssociation.value.like('%' + transfertool + '%')
+        )
 
     requests_by_id = {}
     for (request_id, rule_id, scope, name, md5, adler32, byte_count, activity, attributes, previous_attempt_id, dest_rse_id, account, retry_count,
-         priority, transfertool, requested_at, source_rse_id, source_rse_name, file_path, source_ranking, source_url, distance_ranking) in query:
+         priority, transfertool, requested_at, source_rse_id, source_rse_name, file_path, source_ranking, source_url, distance_ranking) in session.execute(stmt):
 
         # If we didn't pre-filter using temporary tables on database side, perform the filtering here
         if not use_temp_tables and rses and dest_rse_id not in rses:
@@ -644,7 +642,7 @@ def get_next(request_type, state, limit=100, older_than=None, rse_id=None, activ
                     res_dict = dict(res)
                     res_dict.pop('_sa_instance_state')
                     res_dict['request_id'] = res_dict['id']
-                    res_dict['attributes'] = json.loads(str(res_dict['attributes']))
+                    res_dict['attributes'] = json.loads(str(res_dict['attributes'] or '{}'))
 
                     dst_id = res_dict['dest_rse_id']
                     src_id = res_dict['source_rse_id']
@@ -774,7 +772,7 @@ def get_request(request_id, session=None):
         else:
             tmp = dict(tmp)
             tmp.pop('_sa_instance_state')
-            tmp['attributes'] = json.loads(str(tmp['attributes']))
+            tmp['attributes'] = json.loads(str(tmp['attributes'] or '{}'))
             return tmp
     except IntegrityError as error:
         raise RucioException(error.args)
@@ -800,7 +798,7 @@ def get_requests_by_transfer(external_host, transfer_id, session=None):
                 t2 = dict(t)
                 t2.pop('_sa_instance_state')
                 t2['request_id'] = t2['id']
-                t2['attributes'] = json.loads(str(t2['attributes']))
+                t2['attributes'] = json.loads(str(t2['attributes'] or '{}'))
                 result.append(t2)
             return result
         return
@@ -840,7 +838,7 @@ def get_request_by_did(scope, name, rse_id, request_type=None, session=None):
 
             tmp['source_rse'] = get_rse_name(rse_id=tmp['source_rse_id'], session=session) if tmp['source_rse_id'] is not None else None
             tmp['dest_rse'] = get_rse_name(rse_id=tmp['dest_rse_id'], session=session) if tmp['dest_rse_id'] is not None else None
-            tmp['attributes'] = json.loads(str(tmp['attributes']))
+            tmp['attributes'] = json.loads(str(tmp['attributes'] or '{}'))
 
             return tmp
     except IntegrityError as error:
@@ -1571,8 +1569,12 @@ def add_monitor_message(new_state, request, additional_fields, session=None):
 
     if message['started_at'] and message['transferred_at']:
         message['duration'] = (message['transferred_at'] - message['started_at']).seconds
-    if message['dst-url']:
-        message['protocol'] = message['dst-url'].split(':')[0]
+    if not message.get('protocol'):
+        dst_url = message['dst-url']
+        if dst_url and ':' in dst_url:
+            message['protocol'] = dst_url.split(':')[0]
+        elif request.get('transfertool'):
+            message['protocol'] = request['transfertool']
     if not message.get('src-rse'):
         src_rse_id = request.get('source_rse_id', None)
         if src_rse_id:
@@ -1711,33 +1713,61 @@ def list_requests_history(src_rse_ids, dst_rse_ids, states=[RequestState.WAITING
 
 
 @transactional_session
-def preparer_update_requests(source_iter: "Iterable[RequestResultOrState]", session: "Optional[Session]" = None) -> int:
+def prepare_requests(
+        requests_with_sources: "Sequence[RequestWithSources]",
+        logger: "LoggerFunction" = logging.log,
+        session: "Optional[Session]" = None,
+) -> int:
     """
     Update transfer requests according to preparer settings.
     """
     count = 0
-    for rws in source_iter:
-        update_dict = dict()
-        if isinstance(rws, RequestAndState):
-            # special case where the first entry is the request id and the second is the new state
-            # (see handling of RequestState.NO_SOURCES in reduce_requests)
-            request_id = rws.request_id
-            update_dict[models.Request.state] = rws.request_state
-        else:
-            request_id = rws['request_id']
-            update_dict[models.Request.state] = __throttler_request_state(
-                activity=rws['activity'],
-                source_rse_id=rws['src_rse_id'],
-                dest_rse_id=rws['dest_rse_id'],
+    reqs_no_source = set()
+    for rws in requests_with_sources:
+        # Assume request doesn't have any sources. Will be removed later if sources are found.
+        reqs_no_source.add(rws.request_id)
+
+        if not rws.sources:
+            logger(logging.INFO, '%s: has no sources. Skipping.', rws)
+            continue
+
+        sources = sorted(rws.sources, key=lambda s: s.distance_ranking)
+
+        selected_source = None
+        transfertool = None
+        dest_rse_transfertools = get_supported_transfertools(rws.dest_rse.id, session=session)
+        for source in sources:
+            src_rse_transfertools = get_supported_transfertools(source.rse.id, session=session)
+            common_transfertools = dest_rse_transfertools.intersection(src_rse_transfertools)
+            if not common_transfertools:
+                continue
+            transfertool = 'fts3' if 'fts3' in common_transfertools else common_transfertools.pop()
+            selected_source = source
+
+        if not selected_source:
+            logger(logging.WARNING, '%s: all available sources were filtered', rws)
+            continue
+
+        reqs_no_source.remove(rws.request_id)
+
+        update_dict = {
+            models.Request.state: __throttler_request_state(
+                activity=rws.activity,
+                source_rse_id=selected_source.rse.id,
+                dest_rse_id=rws.dest_rse.id,
                 session=session,
-            )
-            update_dict[models.Request.source_rse_id] = rws['src_rse_id']
+            ),
+            models.Request.source_rse_id: selected_source.rse.id,
+        }
+        if transfertool:
+            update_dict[models.Request.transfertool] = transfertool
 
-            if 'transfertool' in rws:
-                update_dict[models.Request.transfertool] = rws['transfertool']
-
-        session.query(models.Request).filter_by(id=request_id).update(update_dict, synchronize_session=False)
+        session.query(models.Request).filter_by(id=rws.request_id).update(update_dict, synchronize_session=False)
         count += 1
+
+    if reqs_no_source:
+        logger(logging.INFO, "Marking requests as no-sources: %s", reqs_no_source)
+        set_requests_state_if_possible(reqs_no_source, RequestState.NO_SOURCES, logger=logger, session=session)
     return count
 
 
@@ -1776,53 +1806,6 @@ def __throttler_request_state(activity, source_rse_id, dest_rse_id, session: "Op
     return RequestState.WAITING if limit_found else RequestState.QUEUED
 
 
-def reduce_requests(
-    req_sources: "List[RequestWithSources]",
-    sort_reduce_funcs: "List[ReduceFunction]",
-    logger: "Callable",
-) -> "Iterator[RequestResultOrState]":
-    """
-    Reduces the passed requests & sources objects by using the sort-reduce
-    functions, yielding the best RequestResult object or a RequestAndState
-    object. If all sources were filtered, a RequestAndState object with
-    RequestState.NO_SOURCES is yielded.
-    """
-    assert len(req_sources) != 0, 'parameter request sources must be non-empty'
-
-    def pick_result(rws: "RequestWithSources") -> "Optional[RequestResult]":
-        result = [
-            {
-                'request_id': rws.request_id,
-                'dest_rse_id': rws.dest_rse.id,
-                'activity': rws.activity,
-                'src_rse_id': source.rse.id,
-                'distance_ranking': source.distance_ranking
-            }
-            for source in rws.sources
-        ]
-        debug_log = []
-        for sort_reduce in sort_reduce_funcs:
-            newresult = list(sort_reduce(result))
-            debug_log.append('filter %s removed %s' % (sort_reduce.__name__, list(filterfalse(newresult.__contains__, result))))
-            result = newresult
-
-        if len(result) == 0:
-            logger(logging.WARNING, 'all available sources were filtered for requests with id %s', rws.request_id)
-            logger(logging.DEBUG, 'the following filters ran:\n' + '\n'.join(debug_log))
-        else:
-            return result[0]
-
-    def result_or_no_sources(result: "Optional[RequestResult]") -> "RequestResultOrState":
-        if result is None:
-            return RequestAndState(request_id=cur_request_id, request_state=RequestState.NO_SOURCES)
-        else:
-            return result
-
-    for rws in req_sources:
-        cur_request_id = rws.request_id
-        yield result_or_no_sources(pick_result(rws))
-
-
 def get_supported_transfertools(rse_id: str, session=None) -> "Set[str]":
     transfertool_attr = get_rse_attribute('transfertool', rse_id=rse_id, session=session)
     if transfertool_attr:
@@ -1836,41 +1819,3 @@ def get_supported_transfertools(rse_id: str, session=None) -> "Set[str]":
         if result:
             return result
     return {'fts3', 'globus'}
-
-
-def get_transfertool_filter(
-    get_transfertools: "Callable[[str], Set[str]]" = get_supported_transfertools,
-) -> "ReduceFunction":
-    def filter_requests_for_transfertools(items: "RowIterator") -> "RowIterator":
-        first = True
-        first_request_id, first_dest_rse_id, dest_rse_transfertools = None, None, None
-        for rws_dict in items:
-            if first:
-                first = False
-                first_request_id = rws_dict['request_id']
-                first_dest_rse_id = rws_dict['dest_rse_id']
-                dest_rse_transfertools = get_transfertools(first_dest_rse_id)
-            else:
-                # same request id, same request destination rse in items per call
-                assert first_request_id == rws_dict['request_id']
-                assert first_dest_rse_id == rws_dict['dest_rse_id']
-
-            src_rse_transfertools = get_transfertools(rws_dict['src_rse_id'])
-            common_transfertools = dest_rse_transfertools.intersection(src_rse_transfertools)
-            if common_transfertools:
-                if 'fts3' in common_transfertools and 'globus' in common_transfertools:
-                    rws_dict['transfertool'] = 'fts3'
-                else:
-                    rws_dict['transfertool'] = common_transfertools.pop()
-                yield rws_dict
-
-    return filter_requests_for_transfertools
-
-
-def sort_requests_minimum_distance(items: "RowIterator") -> "RowIterator":
-    yield from sorted(items, key=lambda rws_dict: rws_dict['distance_ranking'])
-
-
-def rse_lookup_filter(items: "RowIterator") -> "RowIterator":
-    yield from filter(lambda rws_dict: (rws_dict['src_rse_id'] is not None
-                                        and rws_dict['dest_rse_id'] is not None), items)

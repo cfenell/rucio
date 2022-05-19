@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2019-2021 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Jaroslav Guenther <jaroslav.guenther@cern.ch>, 2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Simon Fayer <simon.fayer05@imperial.ac.uk>, 2021
 
 from __future__ import print_function
 
@@ -207,7 +201,7 @@ class TestReplicaRecoverer(unittest.TestCase):
 
         # Run replica recoverer once
         try:
-            run(once=True, younger_than=1, nattempts=2, limit_suspicious_files_on_rse=5)
+            run(once=True, younger_than=1, nattempts=2, limit_suspicious_files_on_rse=5, sleep_time=0, active_mode=True)
         except KeyboardInterrupt:
             stop()
 

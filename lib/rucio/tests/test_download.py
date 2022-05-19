@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2019-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2019
-# - Tobias Wegner <twegner@cern.ch>, 2019
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2019-2022
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021
-# - Martin Barisits <martin.barisits@cern.ch>, 2021
-# - Rakshita Varadarajan <rakshitajps@gmail.com>, 2021
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2021
 
 import logging
 import os
@@ -44,6 +31,7 @@ from rucio.common.utils import generate_uuid
 from rucio.core import did as did_core
 from rucio.core import scope as scope_core
 from rucio.core.rse import add_protocol
+from rucio.client.downloadclient import FileDownloadState
 from rucio.rse import rsemanager as rsemgr
 from rucio.rse.protocols.posix import Default as PosixProtocol
 from rucio.tests.common import skip_rse_tests_with_accounts, scope_name_generator, file_generator
@@ -97,6 +85,18 @@ def test_download_without_base_dir(rse_factory, did_factory, download_client):
         )
     finally:
         shutil.rmtree(scope)
+
+
+def test_download_exception_return_information(did_factory, rse_factory, download_client):
+    rse, _ = rse_factory.make_posix_rse()
+    did = did_factory.upload_test_file(rse)
+    did_str = '%s:%s' % (did['scope'], did['name'])
+
+    with patch('rucio.client.downloadclient.DownloadClient._download_item', side_effect=Exception()):
+        res = download_client.download_dids([{"did": did_str}], deactivate_file_download_exceptions=True)
+
+    assert len(res) == 1
+    assert res[0]["clientState"] == "FAILED"
 
 
 @pytest.mark.dirty(reason='creates a new scope which is not cleaned up')
@@ -740,3 +740,17 @@ def test_download_exclude_tape(rse_factory, did_factory, download_client):
          TemporaryDirectory() as tmp_dir, \
          pytest.raises(NoFilesDownloaded):
         download_client.download_dids([{'did': did_str, 'base_dir': tmp_dir}])
+
+
+def test_download_states():
+    """ Tests the available download states. """
+    FileDownloadState.PROCESSING
+    FileDownloadState.DOWNLOAD_ATTEMPT
+    FileDownloadState.DONE
+    FileDownloadState.ALREADY_DONE
+    FileDownloadState.FOUND_IN_PCACHE
+    FileDownloadState.FILE_NOT_FOUND
+    FileDownloadState.FAIL_VALIDATE
+    FileDownloadState.FAILED
+
+    assert len(FileDownloadState) == 8

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2019-2021 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,16 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Cedric Serfon, <cedric.serfon@cern.ch>, 2018
-# - Jaroslav Guenther <jaroslav.guenther@cern.ch>, 2019
-# - Martin Barisits <martin.barisits@cern.ch>, 2019
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Christoph Ames <cames@cern.ch>, 2021
-# PY3K COMPATIBLE
 
 """
 Replica-Recoverer is a daemon that declares suspicious replicas as bad if they are found available on other RSE.
@@ -244,7 +234,8 @@ Note that attempting the use the ``--vos`` argument when in single-VO mode will 
     parser.add_argument('--vos', nargs='+', type=str, help='Optional list of VOs to consider. Only used in multi-VO mode.')
     parser.add_argument("--run-once", action="store_true", default=False, help='One iteration only.')
     parser.add_argument("--limit-suspicious-files-on-rse", action="store", default=5, help='Maximum number of suspicious replicas on an RSE before that RSE is considered problematic and the suspicious replicas on that RSE are declared "TEMPORARY_UNAVAILABLE". Default value is 5.')
-    parser.add_argument('--sleep-time', action="store", default=300, type=int, help='Concurrency control: thread sleep time after each chunk of work')
+    parser.add_argument('--sleep-time', action="store", default=3600, type=int, help='Concurrency control: thread sleep time after each chunk of work')
+    parser.add_argument('--active-mode', action="store_true", default=False, help='If NOT specified, the daemon will run without taking any actions on any files. In either case, the log file will be produced normally.')
     return parser
 
 
@@ -253,6 +244,6 @@ if __name__ == "__main__":
     PARSER = get_parser()
     ARGS = PARSER.parse_args()
     try:
-        run(once=ARGS.run_once, younger_than=ARGS.younger_than, nattempts=ARGS.nattempts, vos=ARGS.vos, limit_suspicious_files_on_rse=ARGS.limit_suspicious_files_on_rse)
+        run(once=ARGS.run_once, younger_than=ARGS.younger_than, nattempts=ARGS.nattempts, vos=ARGS.vos, limit_suspicious_files_on_rse=ARGS.limit_suspicious_files_on_rse, sleep_time=ARGS.sleep_time, active_mode=ARGS.active_mode)
     except KeyboardInterrupt:
         stop()

@@ -1,18 +1,17 @@
-'''
-  Copyright European Organization for Nuclear Research (CERN)
-
-  Licensed under the Apache License, Version 2.0 (the "License");
-  You may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
-  http://www.apache.org/licenses/LICENSE-2.0
-
-  Authors:
-  - Vincent Garonne, <vincent.garonne@cern.ch>, 2016
-  - Nicolo Magini, <nicolo.magini@cern.ch>, 2018
-  - Hannes Hansen, <hannes.jakob.hansen@cern.ch>, 2019
-
-  PY3K COMPATIBLE
-'''
+# -*- coding: utf-8 -*-
+# Copyright European Organization for Nuclear Research (CERN) since 2012
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 try:
     # PY2
@@ -31,7 +30,7 @@ class Default(ngarc.Default):
     def __init__(self, protocol_attr, rse_settings, logger=None):
         """ Initializes the object with information about the referred RSE.
 
-            :param props Properties derived from the RSE Repository
+            :param props: Properties derived from the RSE Repository
         """
         super(Default, self).__init__(protocol_attr, rse_settings, logger=logger)
         self.attributes.pop('determinism_type', None)
@@ -62,8 +61,8 @@ class Default(ngarc.Default):
     def put(self, source, target, source_dir=None, transfer_timeout=None):
         """ Allows to store files inside the referred RSE.
 
-            :param source Physical file name
-            :param target Name of the file on the storage system e.g. with prefixed scope
+            :param source: Physical file name
+            :param target: Name of the file on the storage system e.g. with prefixed scope
             :param source_dir Path where the to be transferred files are stored in the local file system
             :param transfer_timeout Transfer timeout (in seconds)
 
@@ -74,7 +73,7 @@ class Default(ngarc.Default):
     def delete(self, pfn):
         """ Deletes a file from the connected RSE.
 
-            :param pfn Physical file name
+            :param pfn: Physical file name
 
             :raises ServiceUnavailable, SourceNotFound
         """
@@ -83,7 +82,7 @@ class Default(ngarc.Default):
     def rename(self, pfn, new_pfn):
         """ Allows to rename a file stored inside the connected RSE.
 
-            :param pfn      Current physical file name
+            :param pfn:      Current physical file name
             :param new_pfn  New physical file name
 
             :raises DestinationNotAccessible, ServiceUnavailable, SourceNotFound

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2015-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,21 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Wen Guan <wen.guan@cern.ch>, 2015-2016
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2015-2021
-# - Martin Barisits <martin.barisits@cern.ch>, 2015-2021
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2015-2018
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2018
-# - Robert Illingworth <illingwo@fnal.gov>, 2018
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2020-2021
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Sahan Dilshan <32576163+sahandilshan@users.noreply.github.com>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
 
 """
 Conveyor is a daemon to manage file transfers.
@@ -52,7 +37,7 @@ from rucio.common.policy import get_policy
 from rucio.core import request as request_core
 from rucio.core.monitor import record_counter
 from rucio.core.transfer import set_transfer_update_time
-from rucio.daemons.conveyor.common import HeartbeatHandler
+from rucio.daemons.common import HeartbeatHandler
 from rucio.db.sqla.session import transactional_session
 from rucio.transfertool.fts3 import FTS3CompletionMessageTransferStatusReport
 

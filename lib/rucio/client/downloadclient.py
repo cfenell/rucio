@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2018-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,32 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Tomas Javurek <tomas.javurek@cern.ch>, 2018-2021
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2018
-# - Joaquín Bogado <jbogado@linti.unlp.edu.ar>, 2018
-# - Nicolo Magini <nicolo.magini@cern.ch>, 2018-2019
-# - Tobias Wegner <twegner@cern.ch>, 2018-2019
-# - Martin Barisits <martin.barisits@cern.ch>, 2018-2021
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018-2019
-# - David Cameron <david.cameron@cern.ch>, 2019
-# - Gabriele Fronze' <gfronze@cern.ch>, 2019
-# - Brandon White <bjwhite@fnal.gov>, 2019
-# - Jaroslav Guenther <jaroslav.guenther@cern.ch>, 2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Rakshita Varadarajan <rakshitajps@gmail.com>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2021
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2021
 
 from __future__ import division
 
 import copy
+import enum
 import itertools
 import logging
 import os
@@ -55,13 +34,28 @@ from threading import Thread
 from rucio.client.client import Client
 from rucio.common.config import config_get
 from rucio.common.exception import (InputValidationError, NoFilesDownloaded, NotAllFilesDownloaded, RucioException)
-from rucio.common.didtype import DIDType
+from rucio.common.didtype import DID
 from rucio.common.pcache import Pcache
 from rucio.common.utils import adler32, detect_client_location, generate_uuid, parse_replicas_from_string, \
     send_trace, sizefmt, execute, parse_replicas_from_file, extract_scope
 from rucio.common.utils import GLOBALLY_SUPPORTED_CHECKSUMS, CHECKSUM_ALGO_DICT, PREFERRED_CHECKSUM
 from rucio.rse import rsemanager as rsemgr
 from rucio import version
+
+
+@enum.unique
+class FileDownloadState(str, enum.Enum):
+    """
+    The state a file can be in before/while/after downloading.
+    """
+    PROCESSING = "PROCESSING"
+    DOWNLOAD_ATTEMPT = "DOWNLOAD_ATTEMPT"
+    DONE = "DONE"
+    ALREADY_DONE = "ALREADY_DONE"
+    FOUND_IN_PCACHE = "FOUND_IN_PCACHE"
+    FILE_NOT_FOUND = "FILE_NOT_FOUND"
+    FAIL_VALIDATE = "FAIL_VALIDATE"
+    FAILED = "FAILED"
 
 
 class BaseExtractionTool:
@@ -224,7 +218,7 @@ class DownloadClient:
             did_str = item.get('did')
             pfn = item.get('pfn')
             rse = item.get('rse')
-            item['input_dids'] = {DIDType(did_str): {}}
+            item['input_dids'] = {DID(did_str): {}}
 
             if not did_str or not pfn or not rse:
                 logger(logging.DEBUG, item)
@@ -263,7 +257,8 @@ class DownloadClient:
 
         return self._check_output(output_items, deactivate_file_download_exceptions=deactivate_file_download_exceptions)
 
-    def download_dids(self, items, num_threads=2, trace_custom_fields={}, traces_copy_out=None, deactivate_file_download_exceptions=False):
+    def download_dids(self, items, num_threads=2, trace_custom_fields={}, traces_copy_out=None,
+                      deactivate_file_download_exceptions=False, sort=None):
         """
         Download items with given DIDs. This function can also download datasets and wildcarded DIDs.
 
@@ -286,6 +281,10 @@ class DownloadClient:
         :param trace_custom_fields: Custom key value pairs to send with the traces.
         :param traces_copy_out: reference to an external list, where the traces should be uploaded
         :param deactivate_file_download_exceptions: Boolean, if file download exceptions shouldn't be raised
+        :param sort: Select best replica by replica sorting algorithm. Available algorithms:
+            ``geoip``       - based on src/dst IP topographical distance
+            ``closeness``   - based on src/dst closeness
+            ``dynamic``     - Rucio Dynamic Smart Sort (tm)
 
         :returns: a list of dictionaries with an entry for each file, containing the input options, the did, and the clientState
 
@@ -298,7 +297,7 @@ class DownloadClient:
         trace_custom_fields['uuid'] = generate_uuid()
 
         logger(logging.INFO, 'Processing %d item(s) for input' % len(items))
-        did_to_input_items, file_items_with_sources = self._resolve_and_merge_input_items(copy.deepcopy(items))
+        did_to_input_items, file_items_with_sources = self._resolve_and_merge_input_items(copy.deepcopy(items), sort=sort)
         self.logger(logging.DEBUG, 'num_unmerged_items=%d; num_dids=%d; num_file_items=%d' % (len(items), len(did_to_input_items), len(file_items_with_sources)))
 
         input_items = self._prepare_items_for_download(did_to_input_items, file_items_with_sources)
@@ -344,7 +343,7 @@ class DownloadClient:
 
         did_to_options = {}
         for metalink in metalinks:
-            did = DIDType(metalink['did'])
+            did = DID(metalink['did'])
             did_to_options[did] = [item]
             metalink['input_dids'] = {did: {}}
 
@@ -446,6 +445,8 @@ class DownloadClient:
             except Exception as error:
                 logger(logging.ERROR, '%sFailed to download item' % log_prefix)
                 logger(logging.DEBUG, error)
+                item["clientState"] = "FAILED"
+                output_queue.put(item)
 
     @staticmethod
     def _compute_actual_transfer_timeout(item):
@@ -501,7 +502,7 @@ class DownloadClient:
         trace.setdefault('datasetScope', item.get('dataset_scope', ''))
         trace.setdefault('dataset', item.get('dataset_name', ''))
         trace.setdefault('filesize', item.get('bytes'))
-        trace.setdefault('clientState', 'PROCESSING')
+        trace.setdefault('clientState', FileDownloadState.PROCESSING)
         trace.setdefault('stateReason', 'UNKNOWN')
 
         dest_file_paths = item['dest_file_paths']
@@ -530,10 +531,10 @@ class DownloadClient:
                     if not os.path.isfile(missing_file_path):
                         logger(logging.DEBUG, "copying '%s' to '%s'" % (dest_file_path, missing_file_path))
                         shutil.copy2(dest_file_path, missing_file_path)
-                item['clientState'] = 'ALREADY_DONE'
+                item['clientState'] = FileDownloadState.ALREADY_DONE
                 trace['transferStart'] = time.time()
                 trace['transferEnd'] = time.time()
-                trace['clientState'] = 'ALREADY_DONE'
+                trace['clientState'] = FileDownloadState.ALREADY_DONE
                 send_trace(trace, self.client.host, self.client.user_agent)
                 return item
 
@@ -541,8 +542,8 @@ class DownloadClient:
         sources = item.get('sources')
         if not sources or not len(sources):
             logger(logging.WARNING, '%sNo available source found for file: %s' % (log_prefix, did_str))
-            item['clientState'] = 'FILE_NOT_FOUND'
-            trace['clientState'] = 'FILE_NOT_FOUND'
+            item['clientState'] = FileDownloadState.FILE_NOT_FOUND
+            trace['clientState'] = FileDownloadState.FILE_NOT_FOUND
             trace['stateReason'] = 'No available sources'
             self._send_trace(trace)
             return item
@@ -575,10 +576,10 @@ class DownloadClient:
             # if file found in pcache, send trace and return
             if pcache_state == 0 and hardlink_state == 1:
                 logger(logging.INFO, 'File found in pcache.')
-                item['clientState'] = 'FOUND_IN_PCACHE'
+                item['clientState'] = FileDownloadState.FOUND_IN_PCACHE
                 trace['transferStart'] = time.time()
                 trace['transferEnd'] = time.time()
-                trace['clientState'] = 'FOUND_IN_PCACHE'
+                trace['clientState'] = FileDownloadState.FOUND_IN_PCACHE
                 self._send_trace(trace)
                 return item
             else:
@@ -603,7 +604,7 @@ class DownloadClient:
                 continue
 
             trace['remoteSite'] = rse_name
-            trace['clientState'] = 'DOWNLOAD_ATTEMPT'
+            trace['clientState'] = FileDownloadState.DOWNLOAD_ATTEMPT
             trace['protocol'] = scheme
 
             transfer_timeout = self._compute_actual_transfer_timeout(item)
@@ -645,7 +646,7 @@ class DownloadClient:
                     success = True
                 except Exception as error:
                     logger(logging.DEBUG, error)
-                    trace['clientState'] = str(type(error).__name__)
+                    trace['clientState'] = FileDownloadState.FAILED
                     trace['stateReason'] = str(error)
 
                 end_time = time.time()
@@ -657,7 +658,7 @@ class DownloadClient:
                         os.unlink(temp_file_path)
                         logger(logging.WARNING, '%sChecksum validation failed for file: %s' % (log_prefix, did_str))
                         logger(logging.DEBUG, 'Local checksum: %s, Rucio checksum: %s' % (local_checksum, rucio_checksum))
-                        trace['clientState'] = 'FAIL_VALIDATE'
+                        trace['clientState'] = FileDownloadState.FAIL_VALIDATE
                         trace['stateReason'] = 'Checksum validation failed: Local checksum: %s, Rucio checksum: %s' % (local_checksum, rucio_checksum)
                 if not success:
                     logger(logging.WARNING, '%sDownload attempt failed. Try %s/%s' % (log_prefix, attempt, retries))
@@ -667,7 +668,7 @@ class DownloadClient:
 
         if not success:
             logger(logging.ERROR, '%sFailed to download file %s' % (log_prefix, did_str))
-            item['clientState'] = 'FAILED'
+            item['clientState'] = FileDownloadState.FAILED
             return item
 
         dest_file_path_iter = iter(dest_file_paths)
@@ -690,9 +691,9 @@ class DownloadClient:
 
         trace['transferStart'] = start_time
         trace['transferEnd'] = end_time
-        trace['clientState'] = 'DONE'
+        trace['clientState'] = FileDownloadState.DONE
         trace['stateReason'] = 'OK'
-        item['clientState'] = 'DONE'
+        item['clientState'] = FileDownloadState.DONE
         self._send_trace(trace)
 
         duration = round(end_time - start_time, 2)
@@ -736,7 +737,7 @@ class DownloadClient:
 
         return item
 
-    def download_aria2c(self, items, trace_custom_fields={}, filters={}, deactivate_file_download_exceptions=False):
+    def download_aria2c(self, items, trace_custom_fields={}, filters={}, deactivate_file_download_exceptions=False, sort=None):
         """
         Uses aria2c to download the items with given DIDs. This function can also download datasets and wildcarded DIDs.
         It only can download files that are available via https/davs.
@@ -754,6 +755,10 @@ class DownloadClient:
         :param trace_custom_fields: Custom key value pairs to send with the traces
         :param filters: dictionary containing filter options
         :param deactivate_file_download_exceptions: Boolean, if file download exceptions shouldn't be raised
+        :param sort: Select best replica by replica sorting algorithm. Available algorithms:
+            ``geoip``       - based on src/dst IP topographical distance
+            ``closeness``   - based on src/dst closeness
+            ``dynamic``     - Rucio Dynamic Smart Sort (tm)
 
         :returns: a list of dictionaries with an entry for each file, containing the input options, the did, and the clientState
 
@@ -774,7 +779,7 @@ class DownloadClient:
             item['no_resolve_archives'] = True
 
         logger(logging.INFO, 'Processing %d item(s) for input' % len(items))
-        did_to_input_items, file_items_with_sources = self._resolve_and_merge_input_items(copy.deepcopy(items))
+        did_to_input_items, file_items_with_sources = self._resolve_and_merge_input_items(copy.deepcopy(items), sort=sort)
         self.logger(logging.DEBUG, 'num_unmerged_items=%d; num_dids=%d; num_file_items=%d' % (len(items), len(did_to_input_items), len(file_items_with_sources)))
 
         input_items = self._prepare_items_for_download(did_to_input_items, file_items_with_sources)
@@ -915,13 +920,13 @@ class DownloadClient:
                 dest_file_path = next(iter(item['dest_file_paths']))
                 if os.path.isfile(dest_file_path):
                     logger(logging.INFO, 'File exists already locally: %s' % file_did_str)
-                    item['clientState'] = 'ALREADY_DONE'
-                    trace['clientState'] = 'ALREADY_DONE'
+                    item['clientState'] = FileDownloadState.ALREADY_DONE
+                    trace['clientState'] = FileDownloadState.ALREADY_DONE
                     self._send_trace(trace)
                 elif len(pfns) == 0:
                     logger(logging.WARNING, 'No available source found for file: %s' % file_did_str)
-                    item['clientState'] = 'FILE_NOT_FOUND'
-                    trace['clientState'] = 'FILE_NOT_FOUND'
+                    item['clientState'] = FileDownloadState.FILE_NOT_FOUND
+                    trace['clientState'] = FileDownloadState.FILE_NOT_FOUND
                     self._send_trace(trace)
                 else:
                     item['trace'] = trace
@@ -978,8 +983,8 @@ class DownloadClient:
                     rucio_checksum = 0 if skip_check else item.get('adler32')
                     local_checksum = 0 if skip_check else adler32(temp_file_path)
                     if str(rucio_checksum).lstrip('0') == str(local_checksum).lstrip('0'):
-                        item['clientState'] = 'DONE'
-                        trace['clientState'] = 'DONE'
+                        item['clientState'] = FileDownloadState.DONE
+                        trace['clientState'] = FileDownloadState.DONE
                         # remove .part ending
                         os.rename(temp_file_path, dest_file_path)
 
@@ -997,13 +1002,13 @@ class DownloadClient:
                         os.unlink(temp_file_path)
                         logger(logging.WARNING, 'Checksum validation failed for file: %s' % file_did_str)
                         logger(logging.DEBUG, 'Local checksum: %s, Rucio checksum: %s' % (local_checksum, rucio_checksum))
-                        item['clientState'] = 'FAIL_VALIDATE'
-                        trace['clientState'] = 'FAIL_VALIDATE'
+                        item['clientState'] = FileDownloadState.FAIL_VALIDATE
+                        trace['clientState'] = FileDownloadState.FAIL_VALIDATE
                 else:
                     logger(logging.ERROR, 'Failed to download file: %s' % file_did_str)
                     logger(logging.DEBUG, 'Aria2c status: %s' % status)
-                    item['clientState'] = 'FAILED'
-                    trace['clientState'] = 'DOWNLOAD_ATTEMPT'
+                    item['clientState'] = FileDownloadState.FAILED
+                    trace['clientState'] = FileDownloadState.DOWNLOAD_ATTEMPT
 
                 self._send_trace(trace)
                 del item['trace']
@@ -1049,7 +1054,7 @@ class DownloadClient:
             if not any_did_resolved and '*' not in did_name:
                 yield {'scope': scope, 'name': did_name}
 
-    def _resolve_and_merge_input_items(self, input_items):
+    def _resolve_and_merge_input_items(self, input_items, sort=None):
         """
         This function takes the input items given to download_dids etc.
         and resolves the sources.
@@ -1112,7 +1117,7 @@ class DownloadClient:
                 logger(logging.WARNING, 'An item didnt have any DIDs after resolving the input: %s.' % item.get('did', item))
             item['dids'] = resolved_dids
             for did in resolved_dids:
-                did_to_input_items.setdefault(DIDType(did), []).append(item)
+                did_to_input_items.setdefault(DID(did), []).append(item)
 
                 if 'length' in did and not did['length']:
                     did_with_size = self.client.get_did(scope=did['scope'], name=did['name'], dynamic=True)
@@ -1140,7 +1145,7 @@ class DownloadClient:
         for item_group in item_groups:
             # Take configuration from the first item in the group; but dids from all items
             item = item_group[0]
-            input_dids = {DIDType(did): did
+            input_dids = {DID(did): did
                           for item in item_group
                           for did in item.get('dids')}
 
@@ -1176,6 +1181,7 @@ class DownloadClient:
                                                      ignore_availability=False,
                                                      rse_expression=rse_expression,
                                                      client_location=self.client_location,
+                                                     sort=sort,
                                                      resolve_archives=not item.get('no_resolve_archives'),
                                                      resolve_parents=True,
                                                      nrandom=nrandom,
@@ -1215,9 +1221,9 @@ class DownloadClient:
             # Match the file did back to the dids which were provided to list_replicas.
             # Later, this will allow to match the file back to input_items via did_to_input_items
             for file_item in file_items:
-                file_did = DIDType(file_item['did'])
+                file_did = DID(file_item['did'])
 
-                file_input_dids = {DIDType(did) for did in file_item.get('parent_dids', [])}.intersection(input_dids)
+                file_input_dids = {DID(did) for did in file_item.get('parent_dids', [])}.intersection(input_dids)
                 if file_did in input_dids:
                     file_input_dids.add(file_did)
                 file_item['input_dids'] = {did: input_dids[did] for did in file_input_dids}
@@ -1294,7 +1300,7 @@ class DownloadClient:
 
         # get replicas for every file of the given dids
         for file_item in file_items:
-            file_did = DIDType(file_item['did'])
+            file_did = DID(file_item['did'])
             input_items = list(itertools.chain.from_iterable(did_to_input_items.get(did, []) for did in file_item['input_dids']))
             options = self._options_from_input_items(input_items)
 
@@ -1561,12 +1567,11 @@ class DownloadClient:
         :raises NoFilesDownloaded:
         :raises NotAllFilesDownloaded:
         """
-        success_states = ['ALREADY_DONE', 'DONE', 'FOUND_IN_PCACHE']
-        # failure_states = ['FILE_NOT_FOUND', 'FAIL_VALIDATE', 'FAILED']
+        success_states = [FileDownloadState.ALREADY_DONE, FileDownloadState.DONE, FileDownloadState.FOUND_IN_PCACHE]
         num_successful = 0
         num_failed = 0
         for item in output_items:
-            clientState = item.get('clientState', 'FAILED')
+            clientState = item.get('clientState', FileDownloadState.FAILED)
             if clientState in success_states:
                 num_successful += 1
             else:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2020-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,12 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
 
 import functools
 import logging
@@ -29,15 +23,14 @@ import rucio.db.sqla.util
 from rucio.common import exception
 from rucio.common.exception import RucioException
 from rucio.common.logging import setup_logging
-from rucio.core.request import preparer_update_requests, reduce_requests, sort_requests_minimum_distance, \
-    get_transfertool_filter, get_supported_transfertools, rse_lookup_filter, list_transfer_requests_and_source_replicas
-from rucio.daemons.conveyor.common import run_conveyor_daemon
+from rucio.core.request import prepare_requests, list_transfer_requests_and_source_replicas
 from rucio.db.sqla.constants import RequestState
+from rucio.daemons.common import run_daemon
 
 if TYPE_CHECKING:
     from typing import Optional
     from sqlalchemy.orm import Session
-    from rucio.daemons.conveyor.common import HeartbeatHandler
+    from rucio.daemons.common import HeartbeatHandler
 
 graceful_stop = threading.Event()
 
@@ -91,7 +84,7 @@ def preparer(once, sleep_time, bulk, partition_wait_time=10):
     # Make an initial heartbeat so that all instanced daemons have the correct worker number on the next try
     logger_prefix = executable = 'conveyor-preparer'
 
-    run_conveyor_daemon(
+    run_daemon(
         once=once,
         graceful_stop=graceful_stop,
         executable=executable,
@@ -114,29 +107,27 @@ def run_once(bulk: int = 100, heartbeat_handler: "Optional[HeartbeatHandler]" = 
         worker_number, total_workers, logger = 0, 0, logging.log
 
     start_time = time()
+    requests_with_sources = []
     try:
-        req_sources = list_transfer_requests_and_source_replicas(
+        requests_with_sources = list_transfer_requests_and_source_replicas(
             total_workers=total_workers,
             worker_number=worker_number,
             limit=bulk,
             request_state=RequestState.PREPARING,
             session=session
         )
-        if not req_sources:
-            count = 0
+        if not requests_with_sources:
             updated_msg = 'had nothing to do'
         else:
-            transfertool_filter = get_transfertool_filter(lambda rse_id: get_supported_transfertools(rse_id=rse_id, session=session))
-            requests = reduce_requests(req_sources, [rse_lookup_filter, sort_requests_minimum_distance, transfertool_filter], logger=logger)
-            count = preparer_update_requests(requests, session=session)
+            count = prepare_requests(requests_with_sources=requests_with_sources, logger=logger, session=session)
             updated_msg = f'updated {count}/{bulk} requests'
     except RucioException:
         logger(logging.ERROR, 'errored with a RucioException, retrying later', exc_info=True)
-        count = 0
         updated_msg = 'errored'
     logger(logging.INFO, '%s, taking %.3f seconds' % (updated_msg, time() - start_time))
 
-    queue_empty = False
-    if count < bulk:
-        queue_empty = True
-    return queue_empty
+    must_sleep = False
+    if len(requests_with_sources) < bulk / 2:
+        logger(logging.INFO, "Only %s transfers, which is less than half of the bulk %s", len(requests_with_sources), bulk)
+        must_sleep = True
+    return must_sleep

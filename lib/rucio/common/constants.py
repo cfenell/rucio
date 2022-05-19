@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2013-2021 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2013-2015
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2015-2021
-# - Martin Barisits <martin.barisits@cern.ch>, 2017
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2018-2021
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018
-# - Sahan Dilshan <32576163+sahandilshan@users.noreply.github.com>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021
-# - Rakshita Varadarajan <rakshitajps@gmail.com>, 2021
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2021
-# - Christoph Ames <christoph.ames@cern.ch>, 2021
 
 from collections import namedtuple
 from enum import Enum
@@ -47,11 +34,10 @@ KEY_TYPES = ['ALL', 'COLLECTION', 'FILE', 'DERIVED']
 
 SCHEME_MAP = {'srm': ['srm', 'gsiftp'],
               'gsiftp': ['srm', 'gsiftp'],
-              'https': ['https', 'davs', 's3', 'srm+https'],
-              'davs': ['https', 'davs', 's3', 'srm+https'],
+              'https': ['https', 'davs', 'srm+https'],
+              'davs': ['https', 'davs', 'srm+https'],
               'root': ['root'],
-              's3': ['https', 'davs', 's3', 'srm+https'],
-              'srm+https': ['https', 'davs', 's3', 'srm+https'],
+              'srm+https': ['https', 'davs', 'srm+https'],
               'scp': ['scp'],
               'rsync': ['rsync'],
               'rclone': ['rclone']}
@@ -61,7 +47,7 @@ if config_get('transfers', 'srm_https_compatibility', raise_exception=False, def
     SCHEME_MAP['srm'].append('davs')
     SCHEME_MAP['davs'].append('srm')
 
-SUPPORTED_PROTOCOLS = ['gsiftp', 'srm', 'root', 'davs', 'http', 'https', 'file', 's3', 's3+rucio', 's3+https', 'storm', 'srm+https', 'scp', 'rsync', 'rclone']
+SUPPORTED_PROTOCOLS = ['gsiftp', 'srm', 'root', 'davs', 'http', 'https', 'file', 'storm', 'srm+https', 'scp', 'rsync', 'rclone']
 
 FTS_STATE = namedtuple('FTS_STATE', ['SUBMITTED', 'READY', 'ACTIVE', 'FAILED', 'FINISHED', 'FINISHEDDIRTY', 'NOT_USED',
                                      'CANCELED'])('SUBMITTED', 'READY', 'ACTIVE', 'FAILED', 'FINISHED', 'FINISHEDDIRTY',

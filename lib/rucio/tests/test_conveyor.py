@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2015-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Wen Guan <wen.guan@cern.ch>, 2015-2016
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2016
-# - Martin Barisits <martin.barisits@cern.ch>, 2019-2022
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Mayank Sharma <imptodefeat@gmail.com>, 2021-2022
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2021
 
 import threading
 import time
@@ -675,7 +666,6 @@ def test_preparer_throttler_submitter(rse_factory, did_factory, root_account, fi
 @pytest.mark.dirty(reason="leaves files in XRD containers")
 @pytest.mark.noparallel(reason="runs submitter; poller and finisher")
 @pytest.mark.parametrize("caches_mock", [{"caches_to_mock": [
-    'rucio.common.rse_attributes.REGION',
     'rucio.core.rse.REGION',
     'rucio.rse.rsemanager.RSE_REGION',  # for RSE info
 ]}], indirect=True)
@@ -925,7 +915,6 @@ def overwrite_on_tape_topology(rse_factory, did_factory, root_account, vo, file_
     ('transfers', 'use_multihop', True)
 ]}], indirect=True)
 @pytest.mark.parametrize("caches_mock", [{"caches_to_mock": [
-    'rucio.common.rse_attributes.REGION',
     'rucio.core.rse.REGION',
     'rucio.core.rse_expression_parser.REGION',  # The list of multihop RSEs is retrieved by an expression
     'rucio.core.config.REGION',
@@ -955,7 +944,6 @@ def test_overwrite_on_tape(overwrite_on_tape_topology, core_config_mock, caches_
     ('transfers', 'use_multihop', True)
 ]}], indirect=True)
 @pytest.mark.parametrize("caches_mock", [{"caches_to_mock": [
-    'rucio.common.rse_attributes.REGION',
     'rucio.core.rse.REGION',
     'rucio.core.rse_expression_parser.REGION',  # The list of multihop RSEs is retrieved by an expression
     'rucio.core.config.REGION',
@@ -998,7 +986,6 @@ def test_file_exists_handled(overwrite_on_tape_topology, core_config_mock, cache
     ('transfers', 'overwrite_corrupted_files', False)
 ]}], indirect=True)
 @pytest.mark.parametrize("caches_mock", [{"caches_to_mock": [
-    'rucio.common.rse_attributes.REGION',
     'rucio.core.rse.REGION',
     'rucio.core.rse_expression_parser.REGION',  # The list of multihop RSEs is retrieved by an expression
     'rucio.core.config.REGION',

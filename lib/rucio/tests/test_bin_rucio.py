@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2012-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,33 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2012-2018
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2012-2021
-# - Angelos Molfetas <Angelos.Molfetas@cern.ch>, 2012
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2012-2021
-# - Joaquín Bogado <jbogado@linti.unlp.edu.ar>, 2014-2018
-# - Cheng-Hsi Chao <cheng-hsi.chao@cern.ch>, 2014
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2015-2022
-# - Martin Barisits <martin.barisits@cern.ch>, 2015-2022
-# - Frank Berghaus <frank.berghaus@cern.ch>, 2017-2018
-# - Tobias Wegner <twegner@cern.ch>, 2018
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018-2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Tomas Javurek <tomas.javurek@cern.ch>, 2020
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Rahul Chauhan <omrahulchauhan@gmail.com>, 2021
-# - Simon Fayer <simon.fayer05@imperial.ac.uk>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Paul Millar <paul.millar@desy.de>, 2021
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2021
-# - jdierkes <joel.dierkes@cern.ch>, 2021
-# - Rakshita Varadarajan <rakshitajps@gmail.com>, 2021
-# - Rob Barnsley <robbarnsley@users.noreply.github.com>, 2021
 
 from __future__ import print_function
 
@@ -2204,6 +2177,27 @@ class TestBinRucio(unittest.TestCase):
 
         try:
             remove(filename)
-        except OSError as e:
-            if e.args[0] != 2:
-                raise e
+        except OSError as err:
+            if err.args[0] != 2:
+                raise err
+
+    def test_add_lifetime_exception_large_dids_number(self):
+        """ CLIENT(USER): Check that exceptions with more than 1k DIDs are supported """
+        filename = get_tmp_dir() + 'lifetime_exception.txt'
+        with open(filename, 'w') as file_:
+            for _ in range(2000):
+                file_.write('%s:%s\n' % (self.user, generate_uuid()))
+
+        # Try adding an exception
+        cmd = 'rucio add-lifetime-exception --inputfile %s --reason "%s" --expiration %s' % (filename, 'Needed for analysis', '2015-10-30')
+        print(cmd)
+        exitcode, out, err = execute(cmd)
+        print(exitcode, out, err)
+        assert exitcode == 0
+        assert "Nothing to submit" in err
+
+        try:
+            remove(filename)
+        except OSError as err:
+            if err.args[0] != 2:
+                raise err

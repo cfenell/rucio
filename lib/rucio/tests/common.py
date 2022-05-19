@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2012-2021 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,20 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2012-2021
-# - Angelos Molfetas <Angelos.Molfetas@cern.ch>, 2012
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2012-2018
-# - Joaquín Bogado <jbogado@linti.unlp.edu.ar>, 2014-2018
-# - Fernando López <felopez@cern.ch>, 2015
-# - Martin Barisits <martin.barisits@cern.ch>, 2017
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - Radu Carpa <radu.carpa@cern.ch>, 2021
-# - Simon Fayer <simon.fayer05@imperial.ac.uk>, 2021
 
 from __future__ import print_function
 
@@ -49,6 +35,8 @@ skiplimitedsql = pytest.mark.skipif('RDBMS' in os.environ and os.environ['RDBMS'
                                     reason="does not work in SQLite because of missing features")
 skip_multivo = pytest.mark.skipif('SUITE' in os.environ and os.environ['SUITE'] == 'multi_vo',
                                   reason="does not work for multiVO")
+skip_non_belleii = pytest.mark.skipif(not ('POLICY' in os.environ and os.environ['POLICY'] == 'belleii'),
+                                      reason="specific belleii tests")
 
 
 def get_long_vo():
@@ -78,12 +66,32 @@ def scope_name_generator():
     return 'mock_' + str(uuid()).lower()[:16]
 
 
+def did_name_generator(did_type='file'):
+    """ Generate random did name.
+
+    :returns: A random did name
+    """
+    if os.getenv('POLICY') == 'belleii':
+        path = '/belle'
+        path += '/cont_%s' % str(uuid())
+        if did_type == 'container':
+            return path
+        path += '/dataset_%s' % str(uuid())
+        if did_type == 'dataset':
+            return path
+        path += '/file_%s' % str(uuid())
+        return path
+    if did_type in ['file', 'dataset', 'container']:
+        return '%s_%s' % (did_type, str(uuid()))
+    return 'mock_' + str(uuid())
+
+
 def rse_name_generator(size=10):
     """ Generate random RSE name.
 
     :returns: A random RSE name
     """
-    return 'MOCK_' + ''.join(choice(ascii_uppercase) for x in range(size))
+    return 'MOCK-' + ''.join(choice(ascii_uppercase) for x in range(size))
 
 
 def file_generator(size=2, namelen=10):

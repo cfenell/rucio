@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2013-2021 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,22 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2013-2015
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2014-2020
-# - Evangelia Liotiri <evangelia.liotiri@cern.ch>, 2014
-# - Martin Barisits <martin.barisits@cern.ch>, 2014-2020
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2017
-# - Stefan Prenner <stefan.prenner@cern.ch>, 2017-2018
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Gabriele Fronze' <gfronze@cern.ch>, 2020
-# - Simon Fayer <simon.fayer05@imperial.ac.uk>, 2021
 
 import os.path
+import os
 import sys
 import time
 
@@ -39,11 +26,40 @@ os.chdir(base_path)
 from rucio.api.vo import add_vo  # noqa: E402
 from rucio.client import Client  # noqa: E402
 from rucio.common.config import config_get, config_get_bool  # noqa: E402
-from rucio.common.exception import Duplicate, RucioException  # noqa: E402
+from rucio.common.exception import Duplicate, RucioException, DuplicateContent  # noqa: E402
+from rucio.common.utils import extract_scope  # noqa: E402
 from rucio.core.account import add_account_attribute  # noqa: E402
 from rucio.core.vo import map_vo  # noqa: E402
 from rucio.common.types import InternalAccount  # noqa: E402
 from rucio.tests.common_server import reset_config_table  # noqa: E402
+
+
+def belleii_bootstrap(client):
+    scopes = ['raw', 'hraw', 'other', 'mc_tmp', 'mc', 'test', 'user', 'data', 'data_tmp', 'group']
+    for scope in scopes:
+        try:
+            client.add_scope(scope=scope, account='root')
+        except Duplicate:
+            pass
+        except Exception as err:
+            print(err)
+
+    lpns = ['/belle', '/belle/mc', '/belle/Data', '/belle/user', '/belle/raw']
+    for lpn in lpns:
+        scope, name = extract_scope(lpn)
+        try:
+            client.add_did(scope=scope, name=name, did_type='CONTAINER')
+        except Duplicate:
+            pass
+        except Exception as err:
+            print(err)
+        if name != '/belle':
+            try:
+                client.attach_dids(scope='other', name='/belle', dids=[{'scope': str(scope), 'name': str(name)}])
+            except DuplicateContent:
+                pass
+            except Exception as err:
+                print(err)
 
 
 if __name__ == '__main__':
@@ -59,7 +75,7 @@ if __name__ == '__main__':
         vo = {}
 
     try:
-        c = Client()
+        client = Client()
     except RucioException as e:
         error_msg = str(e)
         print('Creating client failed:', error_msg)
@@ -73,7 +89,7 @@ if __name__ == '__main__':
         raise
 
     try:
-        c.add_account('jdoe', 'SERVICE', 'jdoe@email.com')
+        client.add_account('jdoe', 'SERVICE', 'jdoe@email.com')
     except Duplicate:
         print('Account jdoe already added' % locals())
 
@@ -83,18 +99,18 @@ if __name__ == '__main__':
         print(error)
 
     try:
-        c.add_account('panda', 'SERVICE', 'panda@email.com')
+        client.add_account('panda', 'SERVICE', 'panda@email.com')
         add_account_attribute(account=InternalAccount('panda', **vo), key='admin', value=True)
     except Duplicate:
         print('Account panda already added' % locals())
 
     try:
-        c.add_scope('jdoe', 'mock')
+        client.add_scope('jdoe', 'mock')
     except Duplicate:
         print('Scope mock already added' % locals())
 
     try:
-        c.add_scope('root', 'archive')
+        client.add_scope('root', 'archive')
     except Duplicate:
         print('Scope archive already added' % locals())
 
@@ -106,8 +122,11 @@ if __name__ == '__main__':
                                 ('/CN=docker client', 'x509', 'dummy@cern.ch'),
                                 ('mlassnig@CERN.CH', 'GSS', 'mario.lassnig@cern.ch')]
 
-    for i in additional_test_accounts:
+    for account in additional_test_accounts:
         try:
-            c.add_identity(account='root', identity=i[0], authtype=i[1], email=i[2])
+            client.add_identity(account='root', identity=account[0], authtype=account[1], email=account[2])
         except Exception:
-            print('Already added: ', i)
+            print('Already added: ', account)
+
+    if os.getenv('POLICY') == 'belleii':
+        belleii_bootstrap(client)

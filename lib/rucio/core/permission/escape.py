@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2021-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Rizart Dona <rizart.dona@gmail.com>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2022
 
 import rucio.core.scope
 from rucio.core.account import list_account_attributes, has_account_attribute
@@ -1015,7 +1011,7 @@ def perm_get_signed_url(issuer, kwargs, session=None):
     :param session: The DB session to use
     :returns: True if account is allowed to call the API call, otherwise False
     """
-    return _is_root(issuer) or has_account_attribute(account=issuer, key='admin', session=session)
+    return _is_root(issuer) or has_account_attribute(account=issuer, key='sign-gcs', session=session)
 
 
 def perm_add_bad_pfns(issuer, kwargs, session=None):

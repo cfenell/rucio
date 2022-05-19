@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2013-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,32 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2013-2021
-# - Martin Barisits <martin.barisits@cern.ch>, 2017-2022
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2017
-# - Igor Mandrichenko <rucio@fermicloud055.fnal.gov>, 2018
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2018-2021
-# - dciangot <diego.ciangottini@cern.ch>, 2018
-# - Robert Illingworth <illingwo@fnal.gov>, 2018-2019
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Brandon White <bjwhite@fnal.gov>, 2019
-# - Matt Snyder <msnyder@bnl.gov>, 2019-2021
-# - Gabriele Fronze' <gfronze@cern.ch>, 2019
-# - Jaroslav Guenther <jaroslav.guenther@cern.ch>, 2019-2020
-# - Eric Vaandering <ewv@fnal.gov>, 2020
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Nick Smith <nick.smith@cern.ch>, 2020
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2021
-# - Rahul Chauhan <omrahulchauhan@gmail.com>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Sahan Dilshan <32576163+sahandilshan@users.noreply.github.com>, 2021
-# - Petr Vokac <petr.vokac@fjfi.cvut.cz>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
 
 from __future__ import division
 
@@ -63,14 +37,13 @@ from rucio.common.constants import SUPPORTED_PROTOCOLS
 from rucio.common.exception import (InvalidRSEExpression, NoDistance,
                                     RequestNotFound, RSEProtocolNotSupported,
                                     RucioException, UnsupportedOperation)
-from rucio.common.rse_attributes import RseData
 from rucio.common.utils import construct_surl
 from rucio.core import did, message as message_core, request as request_core
 from rucio.core.account import list_accounts
 from rucio.core.config import get as core_config_get
 from rucio.core.monitor import record_counter
 from rucio.core.request import set_request_state, RequestWithSources, RequestSource
-from rucio.core.rse import list_rses
+from rucio.core.rse import list_rses, RseData
 from rucio.core.rse_expression_parser import parse_expression
 from rucio.db.sqla import models
 from rucio.db.sqla.constants import DIDType, RequestState, RequestType
@@ -118,9 +91,7 @@ class _RseLoaderContext:
         rse_data = self.rse_id_to_data_map.get(rse_id)
         if rse_data is None:
             rse_data = RseData(rse_id)
-            rse_data.load_name(session=self.session)
-            rse_data.load_info(session=self.session)
-            rse_data.load_attributes(session=self.session)
+            rse_data.ensure_loaded(load_name=True, load_info=True, load_attributes=True, session=self.session)
             self.rse_id_to_data_map[rse_id] = rse_data
         return rse_data
 

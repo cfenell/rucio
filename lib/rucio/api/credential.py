@@ -1,4 +1,5 @@
-# Copyright 2012-2018 CERN for the benefit of the ATLAS collaboration.
+# -*- coding: utf-8 -*-
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,20 +12,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Mario Lassnig <mario@lassnig.net>, 2018
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-#
-# PY3K COMPATIBLE
 
 from rucio.api import permission
 from rucio.common import exception
 from rucio.core import credential
 from rucio.core.rse import get_rse_id
+from rucio.db.sqla.session import read_session
 
 
-def get_signed_url(account, appid, ip, rse, service, operation, url, lifetime, vo='def'):
+@read_session
+def get_signed_url(account, appid, ip, rse, service, operation, url, lifetime, vo='def', session=None):
     """
     Get a signed URL for a particular service and operation.
 
@@ -39,11 +36,12 @@ def get_signed_url(account, appid, ip, rse, service, operation, url, lifetime, v
     :param url: The URL to sign.
     :param lifetime: Lifetime in seconds.
     :param vo: The vo to act on.
+    :param session: The database session in use.
     :returns: Signed URL as a variable-length string.
     """
 
     kwargs = {'account': account}
-    if not permission.has_permission(issuer=account, vo=vo, action='get_signed_url', kwargs=kwargs):
+    if not permission.has_permission(issuer=account, vo=vo, action='get_signed_url', kwargs=kwargs, session=session):
         raise exception.AccessDenied('Account %s can not get signed URL for rse=%s, service=%s, operation=%s, url=%s, lifetime=%s' % (account,
                                                                                                                                       rse,
                                                                                                                                       service,
@@ -52,6 +50,6 @@ def get_signed_url(account, appid, ip, rse, service, operation, url, lifetime, v
                                                                                                                                       lifetime))
 
     # look up RSE ID for name
-    rse_id = get_rse_id(rse, vo=vo)
+    rse_id = get_rse_id(rse, vo=vo, session=session)
 
     return credential.get_signed_url(rse_id, service, operation, url, lifetime)

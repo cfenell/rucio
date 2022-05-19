@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2020-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Mayank Sharma <imptodefeat@gmail.com>, 2021-2022
-# - Simon Fayer <simon.fayer05@imperial.ac.uk>, 2021
-# - Rakshita Varadarajan <rakshitajps@gmail.com>, 2021
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2021
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2021
 
 from __future__ import print_function
 
@@ -76,6 +67,27 @@ def did_client():
     from rucio.client.didclient import DIDClient
 
     return DIDClient()
+
+
+@pytest.fixture(scope='module')
+def rse_client():
+    from rucio.client.rseclient import RSEClient
+
+    return RSEClient()
+
+
+@pytest.fixture(scope='module')
+def scope_client():
+    from rucio.client.scopeclient import ScopeClient
+
+    return ScopeClient()
+
+
+@pytest.fixture(scope='module')
+def dirac_client():
+    from rucio.client.diracclient import DiracClient
+
+    return DiracClient()
 
 
 @pytest.fixture

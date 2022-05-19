@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2019-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Matt Snyder <msnyder@bnl.gov>, 2019-2021
-# - Martin Barisits <martin.barisits@cern.ch>, 2019-2021
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2021
 
 import logging
 
@@ -80,7 +73,7 @@ class GlobusTransferStatusReport(TransferStatusReport):
         pass
 
     def get_monitor_msg_fields(self, session, logger=logging.log):
-        return {}
+        return {'protocol': 'globus'}
 
 
 class GlobusTransferTool(Transfertool):

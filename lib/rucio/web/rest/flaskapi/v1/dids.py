@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2021-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2021
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2021
-# - Rob Barnsley <robbarnsley@users.noreply.github.com>, 2021-2022
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2022
 
 import ast
 
@@ -132,7 +124,7 @@ class Search(ErrorHandlingMethodView):
         summary: List Data identifier
         description: List all data identifiers in a scope which match a given metadata.
         tags:
-          - Data Itentifiers
+          - Data Identifiers
         parameters:
         - name: scope
           in: path
@@ -258,7 +250,7 @@ class SearchExtended(ErrorHandlingMethodView):
         summary: List Data identifier with plugin metadata
         description: List all data identifiers in a scope which match a given metadata. Extended Version to included meteadata from various plugins.
         tags:
-          - Data Itentifiers
+          - Data Identifiers
         parameters:
         - name: scope
           in: path
@@ -903,7 +895,7 @@ class Attachment(ErrorHandlingMethodView):
         """
         ---
         summary: Add dids to did
-        description: Append data identifers to data identifiers.
+        description: Append data identifiers to data identifiers.
         tags:
           - Data Identifiers
         parameters:
@@ -1048,7 +1040,7 @@ class AttachmentHistory(ErrorHandlingMethodView):
         summary: Get history
         description: Returns the content history of a data identifier.
         tags:
-          - Data Identifers
+          - Data Identifiers
         parameters:
         - name: scope_name
           in: path
@@ -1333,7 +1325,7 @@ class Meta(ErrorHandlingMethodView):
         summary: Add metadata
         description: Add metadata to a did.
         tags:
-          - Data Identfiers
+          - Data Identifiers
         parameters:
         - name: scope_name
           in: path

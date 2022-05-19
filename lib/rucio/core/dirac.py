@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2020-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2020-2022
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Martin Barisits <martin.barisits@cern.ch>, 2020-2021
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - martynia <martynia@users.noreply.github.com>, 2022
 
 from __future__ import print_function
 import re
@@ -132,7 +124,7 @@ def add_files(lfns, account, ignore_availability, vo='def', session=None):
                     account=InternalAccount(account, vo=vo),
                     statuses=None,
                     meta=None,
-                    rules=[{'copies': 1, 'rse_expression': 'ANY=true', 'weight': None, 'account': InternalAccount(account, vo=vo), 'lifetime': None, 'grouping': 'NONE'}],
+                    rules=[{'copies': 1, 'rse_expression': 'ANY=true', 'weight': None, 'account': InternalAccount(account, vo=vo), 'lifetime': lifetime, 'grouping': 'NONE'}],
                     lifetime=None,
                     dids=None,
                     rse_id=None,

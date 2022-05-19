@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2016-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,18 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Wen Guan <wen.guan@cern.ch>, 2016
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2016-2018
-# - Martin Barisits <martin.barisits@cern.ch>, 2017-2021
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2018
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018-2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Brandon White <bjwhite@fnal.gov>, 2019
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2020-2021
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
 
 """
 Conveyor throttler is a daemon to manage rucio internal queue.
@@ -44,7 +32,7 @@ from rucio.core import config as config_core
 from rucio.core.monitor import record_counter, record_gauge
 from rucio.core.request import get_stats_by_activity_direction_state, release_all_waiting_requests, release_waiting_requests_fifo, release_waiting_requests_grouped_fifo
 from rucio.core.rse import get_rse, set_rse_transfer_limits, delete_rse_transfer_limits, get_rse_transfer_limits
-from rucio.daemons.conveyor.common import run_conveyor_daemon
+from rucio.daemons.common import run_daemon
 from rucio.db.sqla.constants import RequestState
 
 graceful_stop = threading.Event()
@@ -59,7 +47,7 @@ def throttler(once=False, sleep_time=600, partition_wait_time=10):
 
     logger_prefix = executable = 'conveyor-throttler'
 
-    run_conveyor_daemon(
+    run_daemon(
         once=once,
         graceful_stop=graceful_stop,
         executable=executable,

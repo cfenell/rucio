@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-# Copyright 2013-2020 CERN for the benefit of the ATLAS collaboration.
+# -*- coding: utf-8 -*-
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2013
-# - Ralph Vigne <ralph.vigne@cern.ch>, 2013-2014
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2019
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - Gabriele Gaetano Fronze' <gabriele.fronze@to.infn.it>, 2020
 
 import sys
 import os.path
@@ -32,7 +25,7 @@ import sys  # noqa: E402
 import traceback  # noqa: E402
 
 from rucio.client import Client  # noqa: E402
-from rucio.common.exception import Duplicate  # noqa: E402
+from rucio.common.exception import Duplicate, InvalidObject  # noqa: E402
 
 UNKNOWN = 3
 CRITICAL = 2
@@ -67,6 +60,9 @@ def main(argv):
                       continent=continent, time_zone=time_zone, ISP=ISP)
         except Duplicate:
             print('%(rse)s already added' % locals())
+        except InvalidObject as err:
+            print(err)
+            continue
         except:
             errno, errstr = sys.exc_info()[:2]
             trcbck = traceback.format_exc()

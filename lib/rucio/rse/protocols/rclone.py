@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2013-2020 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,16 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Rakshita Varadarajan <rakshitajps@gmail.com>, 2021
 
 import json
 import os
 import logging
 
 from rucio.common import exception
-from rucio.common.config import get_config_dirs, get_rse_credentials
+from rucio.common.config import get_config_dirs
 from rucio.common.utils import execute, PREFERRED_CHECKSUM
 from rucio.rse.protocols import protocol
 
@@ -38,11 +35,11 @@ class Default(protocol.RSEProtocol):
     def __init__(self, protocol_attr, rse_settings, logger=logging.log):
         """ Initializes the object with information about the referred RSE.
 
-            :param props Properties derived from the RSE Repository
+            :param props: Properties derived from the RSE Repository
         """
         super(Default, self).__init__(protocol_attr, rse_settings, logger=logger)
         if len(rse_settings['protocols']) == 1:
-            raise exception.RucioException('rclone initialization requires at least one other protocol defined on the RSE. (from ssh, sftp, posix, webdav, s3)')
+            raise exception.RucioException('rclone initialization requires at least one other protocol defined on the RSE. (from ssh, sftp, posix, webdav)')
         self.scheme = self.attributes['scheme']
         setuprclone = False
         for protocols in reversed(rse_settings['protocols']):
@@ -60,7 +57,7 @@ class Default(protocol.RSEProtocol):
     def setuphostname(self, protocols):
         """ Initializes the rclone object with information about protocols in the referred RSE.
 
-            :param protocols Protocols in the RSE
+            :param protocols: Protocols in the RSE
         """
         if protocols['scheme'] in ['scp', 'rsync', 'sftp']:
             self.hostname = 'ssh_rclone_rse'
@@ -123,36 +120,6 @@ class Default(protocol.RSEProtocol):
             except Exception as e:
                 raise exception.ServiceUnavailable(e)
 
-        elif protocols['scheme'] == 's3':
-            self.hostname = '%s_rclone_rse' % (protocols['scheme'])
-            self.host = protocols['hostname']
-            access_key, secret_key, is_secure = None, None, None
-            if 'S3_ACCESS_KEY' in os.environ:
-                access_key = os.environ['S3_ACCESS_KEY']
-            if 'S3_SECRET_KEY' in os.environ:
-                secret_key = os.environ['S3_SECRET_KEY']
-
-            if is_secure is None or access_key is None or secret_key is None:
-                credentials = get_rse_credentials()
-                self.rse['credentials'] = credentials.get(self.rse['rse'])
-
-                if not access_key:
-                    access_key = self.rse['credentials']['access_key']
-                if not secret_key:
-                    secret_key = self.rse['credentials']['secret_key']
-
-            if not access_key or not secret_key:
-                self.logger(logging.ERROR, 'rclone.init: Missing key(s) for s3 host: {}'.format(self.host))
-                return False
-
-            try:
-                cmd = 'rclone config create {0} s3 provider AWS env_auth false access_key_id {1} secret_access_key {2} region us-east-1 acl private'.format(self.hostname, access_key, secret_key)
-                self.logger(logging.DEBUG, 'rclone.init: cmd: {}'.format(cmd))
-                status, out, err = execute(cmd)
-                if status:
-                    return False
-            except Exception as e:
-                raise exception.ServiceUnavailable(e)
         else:
             self.logger(logging.DEBUG, 'rclone.init: {} protocol impl not supported by rucio rclone'.format(protocols['impl']))
             return False
@@ -177,7 +144,7 @@ class Default(protocol.RSEProtocol):
     def exists(self, pfn):
         """ Checks if the requested file is known by the referred RSE.
 
-            :param pfn Physical file name
+            :param pfn: Physical file name
 
             :returns: True if the file exists, False if it doesn't
 
@@ -305,8 +272,8 @@ class Default(protocol.RSEProtocol):
     def get(self, pfn, dest, transfer_timeout=None):
         """ Provides access to files stored inside connected the RSE.
 
-            :param pfn Physical file name of requested file
-            :param dest Name and path of the files when stored at the client
+            :param pfn: Physical file name of requested file
+            :param dest: Name and path of the files when stored at the client
             :param transfer_timeout: Transfer timeout (in seconds) - dummy
 
             :raises DestinationNotAccessible, ServiceUnavailable, SourceNotFound
@@ -356,7 +323,7 @@ class Default(protocol.RSEProtocol):
         """
             Deletes a file from the connected RSE.
 
-            :param pfn Physical file name
+            :param pfn: Physical file name
 
             :raises ServiceUnavailable: if some generic error occured in the library.
             :raises SourceNotFound: if the source file was not found on the referred storage.
@@ -377,7 +344,7 @@ class Default(protocol.RSEProtocol):
     def rename(self, pfn, new_pfn):
         """ Allows to rename a file stored inside the connected RSE.
 
-            :param pfn      Current physical file name
+            :param pfn:      Current physical file name
             :param new_pfn  New physical file name
             :raises DestinationNotAccessible: if the destination storage was not accessible.
             :raises ServiceUnavailable: if some generic error occured in the library.

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2013-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,35 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2013-2018
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2013-2022
-# - Ralph Vigne <ralph.vigne@cern.ch>, 2013-2014
-# - Martin Barisits <martin.barisits@cern.ch>, 2013-2022
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2014-2021
-# - David Cameron <david.cameron@cern.ch>, 2014
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2014-2021
-# - Wen Guan <wen.guan@cern.ch>, 2014-2015
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018-2019
-# - Dimitrios Christidis <dimitrios.christidis@cern.ch>, 2019-2021
-# - Robert Illingworth <illingwo@fnal.gov>, 2019
-# - James Perry <j.perry@epcc.ed.ac.uk>, 2019
-# - Jaroslav Guenther <jaroslav.guenther@cern.ch>, 2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Ilija Vukotic <ivukotic@cern.ch>, 2020-2021
-# - Brandon White <bjwhite@fnal.gov>, 2019
-# - Tomas Javurek <tomas.javurek@cern.ch>, 2020
-# - Luc Goossens <luc.goossens@cern.ch>, 2020
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Eric Vaandering <ewv@fnal.gov>, 2020-2021
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Gabriele Fronzé <sucre.91@hotmail.it>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2021-2022
-# - Christoph Ames <christoph.ames@physik.uni-muenchen.de>, 2021
 
 import heapq
 import logging
@@ -59,7 +30,7 @@ from traceback import format_exc
 import requests
 from dogpile.cache.api import NO_VALUE
 from six import string_types
-from sqlalchemy import func, and_, or_, exists, not_, update, delete, insert, Column
+from sqlalchemy import func, and_, or_, exists, not_, update, delete, insert
 from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm.exc import FlushError, NoResultFound
@@ -71,7 +42,6 @@ import rucio.core.lock
 from rucio.common import exception
 from rucio.common.cache import make_region_memcached
 from rucio.common.config import config_get, config_get_bool
-from rucio.common.schema import get_schema_value
 from rucio.common.types import InternalScope
 from rucio.common.utils import chunks, clean_surls, str_to_date, add_url_query
 from rucio.common.constants import SuspiciousAvailability
@@ -85,8 +55,7 @@ from rucio.db.sqla.constants import (DIDType, ReplicaState, OBSOLETE, DIDAvailab
                                      BadFilesStatus, RuleState, BadPFNStatus)
 from rucio.db.sqla.session import (read_session, stream_session, transactional_session,
                                    DEFAULT_SCHEMA_NAME, BASE)
-from rucio.db.sqla.types import InternalScopeString, String
-from rucio.db.sqla.util import create_temp_table
+from rucio.db.sqla.util import create_scope_name_temp_table, create_association_temp_table
 from rucio.rse import rsemanager as rsemgr
 
 REGION = make_region_memcached(expiration_time=60)
@@ -488,23 +457,30 @@ def get_pfn_to_rse(pfns, vo='def', session=None):
     protocols = {}
 
     for rse_id, protocol, hostname, port, prefix in query.yield_per(10000):
-        protocols[rse_id] = ('%s://%s%s' % (protocol, hostname, prefix), '%s://%s:%s%s' % (protocol, hostname, port, prefix))
+        if rse_id not in protocols:
+            protocols[rse_id] = []
+        protocols[rse_id].append('%s://%s:%s%s' % (protocol, hostname, port, prefix))
+        if '%s://%s%s' % (protocol, hostname, prefix) not in protocols[rse_id]:
+            protocols[rse_id].append('%s://%s%s' % (protocol, hostname, prefix))
     hint = None
     for surl in surls:
-        if hint and (surl.find(protocols[hint][0]) > -1 or surl.find(protocols[hint][1]) > -1):
-            dict_rse[hint].append(surl)
+        if hint:
+            for pattern in protocols[hint]:
+                if surl.find(pattern) > -1:
+                    dict_rse[hint].append(surl)
         else:
             mult_rse_match = 0
             for rse_id in protocols:
-                if (surl.find(protocols[rse_id][0]) > -1 or surl.find(protocols[rse_id][1]) > -1) and get_rse_vo(rse_id=rse_id, session=session) == vo:
-                    mult_rse_match += 1
-                    if mult_rse_match > 1:
-                        print('ERROR, multiple matches : %s at %s' % (surl, rse_id))
-                        raise exception.RucioException('ERROR, multiple matches : %s at %s' % (surl, get_rse_name(rse_id=rse_id, session=session)))
-                    hint = rse_id
-                    if hint not in dict_rse:
-                        dict_rse[hint] = []
-                    dict_rse[hint].append(surl)
+                for pattern in protocols[rse_id]:
+                    if surl.find(pattern) > -1 and get_rse_vo(rse_id=rse_id, session=session) == vo:
+                        mult_rse_match += 1
+                        if mult_rse_match > 1:
+                            print('ERROR, multiple matches : %s at %s' % (surl, rse_id))
+                            raise exception.RucioException('ERROR, multiple matches : %s at %s' % (surl, get_rse_name(rse_id=rse_id, session=session)))
+                        hint = rse_id
+                        if hint not in dict_rse:
+                            dict_rse[hint] = []
+                        dict_rse[hint].append(surl)
             if mult_rse_match == 0:
                 if 'unknown' not in unknown_replicas:
                     unknown_replicas['unknown'] = []
@@ -1576,38 +1552,9 @@ def __delete_replicas(rse_id, files, ignore_availability=True, session=None):
         raise exception.ResourceTemporaryUnavailable('%s is temporary unavailable'
                                                      'for deleting' % replica_rse.rse)
 
-    columns = [
-        Column("scope", InternalScopeString(get_schema_value('SCOPE_LENGTH'))),
-        Column("name", String(get_schema_value('NAME_LENGTH'))),
-    ]
-    scope_name_temp_table = create_temp_table(
-        "delete_replicas",
-        *columns,
-        primary_key=columns,
-        session=session,
-    )
-    columns = [
-        Column("scope", InternalScopeString(get_schema_value('SCOPE_LENGTH'))),
-        Column("name", String(get_schema_value('NAME_LENGTH'))),
-    ]
-    scope_name_temp_table2 = create_temp_table(
-        "delete_replicas2",
-        *columns,
-        primary_key=columns,
-        session=session,
-    )
-    columns = [
-        Column("scope", InternalScopeString(get_schema_value('SCOPE_LENGTH'))),
-        Column("name", String(get_schema_value('NAME_LENGTH'))),
-        Column("child_scope", InternalScopeString(get_schema_value('SCOPE_LENGTH'))),
-        Column("child_name", String(get_schema_value('NAME_LENGTH'))),
-    ]
-    association_temp_table = create_temp_table(
-        "delete_replicas_association",
-        *columns,
-        primary_key=columns,
-        session=session,
-    )
+    scope_name_temp_table = create_scope_name_temp_table("delete_replicas", session=session)
+    scope_name_temp_table2 = create_scope_name_temp_table("delete_replicas2", session=session)
+    association_temp_table = create_association_temp_table("delete_replicas_association", session=session)
 
     session.bulk_insert_mappings(scope_name_temp_table, [{'scope': file['scope'], 'name': file['name']} for file in files])
 
@@ -1627,8 +1574,9 @@ def __delete_replicas(rse_id, files, ignore_availability=True, session=None):
     stmt = select(
         func.count(),
         func.sum(models.RSEFileAssociation.bytes),
-    ).join(
+    ).join_from(
         scope_name_temp_table,
+        models.RSEFileAssociation,
         and_(models.RSEFileAssociation.scope == scope_name_temp_table.scope,
              models.RSEFileAssociation.name == scope_name_temp_table.name,
              models.RSEFileAssociation.rse_id == rse_id)
@@ -1722,8 +1670,9 @@ def __cleanup_after_replica_deletion(scope_name_temp_table, scope_name_temp_tabl
         models.DataIdentifierAssociation.scope,
         models.DataIdentifierAssociation.name,
     ).distinct(
-    ).join(
+    ).join_from(
         scope_name_temp_table,
+        models.DataIdentifierAssociation,
         and_(scope_name_temp_table.scope == models.DataIdentifierAssociation.child_scope,
              scope_name_temp_table.name == models.DataIdentifierAssociation.child_name)
     ).join(
@@ -1754,8 +1703,9 @@ def __cleanup_after_replica_deletion(scope_name_temp_table, scope_name_temp_tabl
             models.DataIdentifierAssociation.child_scope,
             models.DataIdentifierAssociation.child_name,
         ).distinct(
-        ).join(
+        ).join_from(
             scope_name_temp_table,
+            models.DataIdentifierAssociation,
             and_(scope_name_temp_table.scope == models.DataIdentifierAssociation.child_scope,
                  scope_name_temp_table.name == models.DataIdentifierAssociation.child_name)
         ).outerjoin(
@@ -1832,8 +1782,9 @@ def __cleanup_after_replica_deletion(scope_name_temp_table, scope_name_temp_tabl
                 models.DataIdentifier.name,
                 models.DataIdentifier.did_type,
             ).distinct(
-            ).join(
+            ).join_from(
                 association_temp_table,
+                models.DataIdentifier,
                 and_(association_temp_table.scope == models.DataIdentifier.scope,
                      association_temp_table.name == models.DataIdentifier.name)
             ).where(
@@ -1874,8 +1825,9 @@ def __cleanup_after_replica_deletion(scope_name_temp_table, scope_name_temp_tabl
         models.CollectionReplica.scope,
         models.CollectionReplica.name,
     ).distinct(
-    ).join(
+    ).join_from(
         scope_name_temp_table,
+        models.CollectionReplica,
         and_(scope_name_temp_table.scope == models.CollectionReplica.scope,
              scope_name_temp_table.name == models.CollectionReplica.name),
     ).join(
@@ -1945,8 +1897,9 @@ def __cleanup_after_replica_deletion(scope_name_temp_table, scope_name_temp_tabl
     stmt = select(
         models.ConstituentAssociation
     ).distinct(
-    ).join(
+    ).join_from(
         scope_name_temp_table,
+        models.ConstituentAssociation,
         and_(scope_name_temp_table.scope == models.ConstituentAssociation.scope,
              scope_name_temp_table.name == models.ConstituentAssociation.name),
     ).outerjoin(
@@ -2073,8 +2026,9 @@ def __cleanup_after_replica_deletion(scope_name_temp_table, scope_name_temp_tabl
         ).distinct(
         ).where(
             models.DataIdentifier.is_archive == true()
-        ).join(
+        ).join_from(
             scope_name_temp_table,
+            models.DataIdentifier,
             and_(scope_name_temp_table.scope == models.DataIdentifier.scope,
                  scope_name_temp_table.name == models.DataIdentifier.name)
         ).join(
@@ -2563,16 +2517,7 @@ def list_and_mark_unlocked_replicas(limit, bytes_=None, rse_id=None, delay_secon
     total_bytes = 0
     rows = []
 
-    columns = [
-        Column("scope", InternalScopeString(get_schema_value('SCOPE_LENGTH'))),
-        Column("name", String(get_schema_value('NAME_LENGTH'))),
-    ]
-    temp_table_cls = create_temp_table(
-        "list_and_mark_unlocked_replicas",
-        *columns,
-        primary_key=columns,
-        session=session,
-    )
+    temp_table_cls = create_scope_name_temp_table("list_and_mark_unlocked_replicas", session=session)
 
     replicas_alias = aliased(models.RSEFileAssociation, name='replicas_alias')
 
@@ -2617,8 +2562,9 @@ def list_and_mark_unlocked_replicas(limit, bytes_=None, rse_id=None, delay_secon
             models.RSEFileAssociation.bytes,
             models.RSEFileAssociation.tombstone,
             models.RSEFileAssociation.state,
-        ).join(
+        ).join_from(
             temp_table_cls,
+            models.RSEFileAssociation,
             and_(models.RSEFileAssociation.scope == temp_table_cls.scope,
                  models.RSEFileAssociation.name == temp_table_cls.name,
                  models.RSEFileAssociation.rse_id == rse_id)
@@ -3875,14 +3821,14 @@ def get_suspicious_files(rse_expression, available_elsewhere, filter_=None, logg
     :param nattempts: The minimum number of replica appearances in the bad_replica DB table from younger_than date. Default value = 0.
     :param rse_expression: The RSE expression where the replicas are located.
     :param filter_: Dictionary of attributes by which the RSE results should be filtered. e.g.: {'availability_write': True}
-    :param: exclude_states: List of states which eliminates replicas from search result if any of the states in the list
+    :param exclude_states: List of states which eliminates replicas from search result if any of the states in the list
                             was declared for a replica since younger_than date. Allowed values
                             = ['B', 'R', 'D', 'L', 'T', 'S'] (meaning 'BAD', 'RECOVERED', 'DELETED', 'LOST', 'TEMPORARY_UNAVAILABLE', 'SUSPICIOUS').
-    :param: available_elsewhere: Default: SuspiciousAvailability["ALL"].value, all suspicious replicas are returned.
+    :param available_elsewhere: Default: SuspiciousAvailability["ALL"].value, all suspicious replicas are returned.
                                  If SuspiciousAvailability["EXIST_COPIES"].value, only replicas that additionally have copies declared as AVAILABLE on at least one other RSE
                                  than the one in the bad_replicas table will be taken into account.
                                  If SuspiciousAvailability["LAST_COPY"].value, only replicas that do not have another copy declared as AVAILABLE on another RSE will be taken into account.
-    :param: is_suspicious: If True, only replicas declared as SUSPICIOUS in bad replicas table will be taken into account. Default value = False.
+    :param is_suspicious: If True, only replicas declared as SUSPICIOUS in bad replicas table will be taken into account. Default value = False.
     :param session: The database session in use. Default value = None.
 
     :returns: a list of replicas:

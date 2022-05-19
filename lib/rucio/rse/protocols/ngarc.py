@@ -1,4 +1,5 @@
-# Copyright 2014-2020 CERN for the benefit of the ATLAS collaboration.
+# -*- coding: utf-8 -*-
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,18 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - David Cameron <david.cameron@cern.ch>, 2014
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2016
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2017
-# - Joaquin Bogado <jbogado@linti.unlp.edu.ar>, 2018
-# - Nicolo Magini <nicolo.magini@cern.ch>, 2018
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018
-# - Tomas Javurek <tomas.javurek@cern.ch>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-#
-# PY3K COMPATIBLE
 
 import errno
 import os
@@ -88,7 +77,7 @@ class Default(protocol.RSEProtocol):
     def exists(self, pfn):
         """ Checks if the requested file is known by the referred RSE.
 
-            :param pfn Physical file name
+            :param pfn: Physical file name
 
             :returns: True if the file exists, False if it doesn't
 
@@ -151,8 +140,8 @@ class Default(protocol.RSEProtocol):
     def get(self, pfn, dest, transfer_timeout=None):
         """ Provides access to files stored inside connected the RSE.
 
-            :param pfn Physical file name of requested file
-            :param dest Name and path of the files when stored at the client
+            :param pfn: Physical file name of requested file
+            :param dest: Name and path of the files when stored at the client
             :param transfer_timeout Transfer timeout (in seconds) - dummy
 
             :raises DestinationNotAccessible, ServiceUnavailable, SourceNotFound
@@ -162,8 +151,8 @@ class Default(protocol.RSEProtocol):
     def put(self, source, target, source_dir=None, transfer_timeout=None):
         """ Allows to store files inside the referred RSE.
 
-            :param source Physical file name
-            :param target Name of the file on the storage system e.g. with prefixed scope
+            :param source: Physical file name
+            :param target: Name of the file on the storage system e.g. with prefixed scope
             :param source_dir Path where the to be transferred files are stored in the local file system
             :param transfer_timeout Transfer timeout (in seconds) - dummy
 
@@ -184,7 +173,7 @@ class Default(protocol.RSEProtocol):
     def delete(self, pfn):
         """ Deletes a file from the connected RSE.
 
-            :param pfn Physical file name
+            :param pfn: Physical file name
 
             :raises ServiceUnavailable, SourceNotFound
         """
@@ -201,7 +190,7 @@ class Default(protocol.RSEProtocol):
     def rename(self, pfn, new_pfn):
         """ Allows to rename a file stored inside the connected RSE.
 
-            :param pfn      Current physical file name
+            :param pfn:      Current physical file name
             :param new_pfn  New physical file name
 
             :raises DestinationNotAccessible, ServiceUnavailable, SourceNotFound

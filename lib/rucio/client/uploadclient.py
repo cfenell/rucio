@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2012-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,36 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Ralph Vigne <ralph.vigne@cern.ch>, 2012-2015
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2012-2021
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2012-2018
-# - Martin Barisits <martin.barisits@cern.ch>, 2017-2022
-# - Tobias Wegner <twegner@cern.ch>, 2018
-# - Joaquín Bogado <jbogado@linti.unlp.edu.ar>, 2018
-# - Nicolo Magini <nicolo.magini@cern.ch>, 2018
-# - Tomas Javurek <tomas.javurek@cern.ch>, 2018-2020
-# - Ale Di Girolamo <alessandro.di.girolamo@cern.ch>, 2018
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018
-# - James Perry <j.perry@epcc.ed.ac.uk>, 2019-2022
-# - Boris Bauermeister <boris.bauermeister@fysik.su.se>, 2019
-# - David Cameron <david.cameron@cern.ch>, 2019
-# - Gabriele Fronze' <gfronze@cern.ch>, 2019
-# - Jaroslav Guenther <jaroslav.guenther@cern.ch>, 2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Dimitrios Christidis <dimitrios.christidis@cern.ch>, 2020
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2020-2022
-# - Eric Vaandering <ewv@fnal.gov>, 2020
-# - Rakshita Varadarajan <rakshitajps@gmail.com>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2021
-# - Nicholas Smith <nick.smith@cern.ch>, 2021
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2022
 
 import copy
 import json
@@ -640,10 +610,10 @@ class UploadClient:
 
         # Removing tmp from earlier attempts
         if (not sign_service and protocol_write.exists(pfn_tmp)) or (sign_service and protocol_read.exists(signed_read_pfn_tmp)):
-            logger(logging.DEBUG, 'Removing remains of previous upload attemtps.')
+            logger(logging.DEBUG, 'Removing remains of previous upload attempts.')
             try:
                 # Construct protocol for delete operation.
-                protocol_delete = self._create_protocol(rse_settings, 'delete', domain=domain, impl=impl)
+                protocol_delete = self._create_protocol(rse_settings, 'delete', force_scheme=force_scheme, domain=domain, impl=impl)
                 delete_pfn = '%s.rucio.upload' % list(protocol_delete.lfns2pfns(make_valid_did(lfn)).values())[0]
                 if sign_service:
                     delete_pfn = self.client.get_signed_url(rse_settings['rse'], sign_service, 'delete', delete_pfn)
@@ -654,10 +624,10 @@ class UploadClient:
 
         # Removing not registered files from earlier attempts
         if delete_existing:
-            logger(logging.DEBUG, 'Removing not-registered remains of previous upload attemtps.')
+            logger(logging.DEBUG, 'Removing not-registered remains of previous upload attempts.')
             try:
                 # Construct protocol for delete operation.
-                protocol_delete = self._create_protocol(rse_settings, 'delete', domain=domain, impl=impl)
+                protocol_delete = self._create_protocol(rse_settings, 'delete', force_scheme=force_scheme, domain=domain, impl=impl)
                 delete_pfn = '%s' % list(protocol_delete.lfns2pfns(make_valid_did(lfn)).values())[0]
                 if sign_service:
                     delete_pfn = self.client.get_signed_url(rse_settings['rse'], sign_service, 'delete', delete_pfn)
@@ -713,8 +683,8 @@ class UploadClient:
     def _retry_protocol_stat(self, protocol, pfn):
         """
         Try to stat file, on fail try again 1s, 2s, 4s, 8s, 16s, 32s later. Fail is all fail
-        :param protocol     The protocol to use to reach this file
-        :param pfn          Physical file name of the target for the protocol stat
+        :param protocol:     The protocol to use to reach this file
+        :param pfn:          Physical file name of the target for the protocol stat
         """
         retries = config_get_int('client', 'protocol_stat_retries', raise_exception=False, default=6)
         for attempt in range(retries):
@@ -741,9 +711,9 @@ class UploadClient:
     def _create_protocol(self, rse_settings, operation, impl=None, force_scheme=None, domain='wan'):
         """
         Protol construction.
-        :param: rse_settings        rse_settings
-        :param: operation           activity, e.g. read, write, delete etc.
-        :param: force_scheme        custom scheme
+        :param rse_settings:        rse_settings
+        :param operation:           activity, e.g. read, write, delete etc.
+        :param force_scheme:        custom scheme
         :param auth_token: Optionally passing JSON Web Token (OIDC) string for authentication
         """
         try:
@@ -772,7 +742,7 @@ class UploadClient:
             - If it has files, the root folder will be a dataset
             - If it is empty, it does not create anything
 
-        :param: item        dictionary containing all descriptions of the files to upload
+        :param item:        dictionary containing all descriptions of the files to upload
         """
         files = []
         datasets = []

@@ -1,4 +1,5 @@
-# Copyright 2014-2020 CERN for the benefit of the ATLAS collaboration.
+# -*- coding: utf-8 -*-
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,27 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Wen Guan <wen.guan@cern.ch>, 2014-2016
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2014-2018
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2014-2016
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2016-2020
-# - Tobias Wegner <twegner@cern.ch>, 2017
-# - Nicolo Magini <Nicolo.Magini@cern.ch>, 2018-2019
-# - Joaquin Bogado <jbogado@linti.unlp.edu.ar>, 2018
-# - Frank Berghaus <berghaus@cern.ch>, 2018
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2019
-# - James Perry <j.perry@epcc.ed.ac.uk>, 2019
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Gabriele Fronze' <gfronze@cern.ch>, 2019
-# - Jaroslav Guenther <jaroslav.guenther@cern.ch>, 2019
-# - Tomas Javurek <tomas.javurek@cern.ch>, 2020
-# - Martin Barisits <martin.barisits@cern.ch>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2020-2021
-#
-# PY3K COMPATIBLE
 
 import errno
 import json
@@ -201,7 +181,10 @@ class Default(protocol.RSEProtocol):
         """
         self.logger(logging.DEBUG, 'connecting to storage')
 
-        gfal2.set_verbose(gfal2.verbose_level.verbose)
+        if 'RUCIO_CLIENT_MODE' in os.environ:
+            gfal2.set_verbose(gfal2.verbose_level.verbose)
+        else:
+            gfal2.set_verbose(gfal2.verbose_level.warning)
 
         self.__ctx = gfal2.creat_context()  # pylint: disable=no-member
         self.__ctx.set_opt_string_list("SRM PLUGIN", "TURL_PROTOCOLS", ["gsiftp", "rfio", "gsidcap", "dcap", "kdcap"])
@@ -630,7 +613,7 @@ class NoRename(Default):
     def rename(self, pfn, new_pfn):
         """ Allows to rename a file stored inside the connected RSE.
 
-            :param pfn      Current physical file name
+            :param pfn:      Current physical file name
             :param new_pfn  New physical file name
 
             :raises DestinationNotAccessible, ServiceUnavailable, SourceNotFound
@@ -645,7 +628,7 @@ class CLI(Default):
     def __init__(self, protocol_attr, rse_settings, logger=logging.log):
         """ Initializes the object with information about the referred RSE.
 
-            :param props Properties derived from the RSE Repository
+            :param props: Properties derived from the RSE Repository
         """
 
         super(CLI, self).__init__(protocol_attr, rse_settings, logger=logger)

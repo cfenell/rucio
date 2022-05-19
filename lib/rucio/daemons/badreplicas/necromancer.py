@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2018-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,20 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2018-2022
-# - Martin Barisits <martin.barisits@cern.ch>, 2019
-# - Brandon White <bjwhite@fnal.gov>, 2019
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2020-2021
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021
 
 from __future__ import division
 
 import logging
 import os
+import re
 import socket
 import threading
 import time
@@ -38,6 +30,7 @@ try:
 except ImportError:
     from configparser import NoOptionError, NoSectionError
 
+from sqlalchemy.exc import DatabaseError
 from dogpile.cache.api import NO_VALUE
 
 import rucio.db.sqla.util
@@ -46,6 +39,7 @@ from rucio.common.cache import make_region_memcached
 from rucio.common.config import config_get, config_get_int
 from rucio.common.exception import DatabaseException
 from rucio.common.logging import formatted_logger, setup_logging
+from rucio.common.utils import daemon_sleep
 from rucio.core import monitor, heartbeat
 from rucio.core.replica import list_bad_replicas, get_replicas_state, get_bad_replicas_backlog
 from rucio.core.rule import (update_rules_for_lost_replica, update_rules_for_bad_replica,
@@ -75,9 +69,11 @@ def necromancer(thread=0, bulk=5, once=False, sleep_time=60):
 
     while not GRACEFUL_STOP.is_set():
 
+        stime = time.time()
         heart_beat = heartbeat.live(executable, hostname, pid, hb_thread)
         prefix = 'Thread [%i/%i] : ' % (heart_beat['assign_thread'], heart_beat['nr_threads'])
         logger = formatted_logger(logging.log, prefix + '%s')
+        logger(logging.DEBUG, 'Starting new cycle')
 
         # Check if there is a Judge Evaluator backlog
         try:
@@ -127,7 +123,7 @@ def necromancer(thread=0, bulk=5, once=False, sleep_time=60):
             logger(logging.INFO, 'Backlog of bads replica too big. Apply some sharing between different RSEs')
             rses = list()
             cnt = 0
-            for key in sorted(bad_replicas_backlog, key=bad_replicas_backlog.get, reverse=False):
+            for key in sorted(bad_replicas_backlog, key=bad_replicas_backlog.get, reverse=True):
                 rses.append({'id': key})
                 cnt += bad_replicas_backlog[key]
                 if cnt >= bulk:
@@ -137,44 +133,55 @@ def necromancer(thread=0, bulk=5, once=False, sleep_time=60):
         else:
             list_of_rses.append(None)
 
-        stime = time.time()
-        replicas = []
         tot_processed = 0
-        try:
-            for rses in list_of_rses:
-                replicas = list_bad_replicas(limit=bulk, thread=heart_beat['assign_thread'], total_threads=heart_beat['nr_threads'], rses=rses)
+        if tot_bad_files == 0:
+            logger(logging.INFO, 'No bad replicas to process.')
+        else:
+            ttime = time.time()
+            replicas = []
+            try:
+                for rses in list_of_rses:
 
-                for replica in replicas:
-                    scope, name, rse_id, rse = replica['scope'], replica['name'], replica['rse_id'], replica['rse']
-                    logger(logging.INFO, 'Working on %s:%s on %s' % (scope, name, rse))
+                    replicas = list_bad_replicas(limit=bulk, thread=heart_beat['assign_thread'], total_threads=heart_beat['nr_threads'], rses=rses)
+                    for replica in replicas:
+                        scope, name, rse_id, rse = replica['scope'], replica['name'], replica['rse_id'], replica['rse']
+                        logger(logging.INFO, 'Working on %s:%s on %s' % (scope, name, rse))
 
-                    list_replicas = get_replicas_state(scope=scope, name=name)
-                    if ReplicaState.AVAILABLE not in list_replicas and ReplicaState.TEMPORARY_UNAVAILABLE not in list_replicas:
-                        logger(logging.INFO, 'File %s:%s has no other available or temporary available replicas, it will be marked as lost' % (scope, name))
-                        try:
-                            update_rules_for_lost_replica(scope=scope, name=name, rse_id=rse_id, nowait=True)
-                            monitor.record_counter(name='necromancer.badfiles.lostfile')
-                        except DatabaseException as error:
-                            logger(logging.WARNING, str(error))
+                        list_replicas = get_replicas_state(scope=scope, name=name)
+                        if ReplicaState.AVAILABLE not in list_replicas and ReplicaState.TEMPORARY_UNAVAILABLE not in list_replicas:
+                            logger(logging.INFO, 'File %s:%s has no other available or temporary available replicas, it will be marked as lost' % (scope, name))
+                            try:
+                                update_rules_for_lost_replica(scope=scope, name=name, rse_id=rse_id, nowait=True)
+                                monitor.record_counter(name='necromancer.badfiles.lostfile')
+                            except (DatabaseException, DatabaseError) as error:
+                                if re.match('.*ORA-00054.*', error.args[0]) or re.match('.*ORA-00060.*', error.args[0]) or 'ERROR 1205 (HY000)' in error.args[0]:
+                                    logger(logging.WARNING, 'Lock detected when handling request - skipping: %s', str(error))
+                                else:
+                                    logger(logging.ERROR, str(error))
 
-                    else:
-                        rep = list_replicas.get(ReplicaState.AVAILABLE, [])
-                        unavailable_rep = list_replicas.get(ReplicaState.TEMPORARY_UNAVAILABLE, [])
-                        logger(logging.INFO, 'File %s:%s can be recovered. Available sources : %s + Unavailable sources : %s' % (scope, name, str(rep), str(unavailable_rep)))
-                        try:
-                            update_rules_for_bad_replica(scope=scope, name=name, rse_id=rse_id, nowait=True)
-                            monitor.record_counter(name='necromancer.badfiles.recovering')
-                        except DatabaseException as error:
-                            logger(logging.WARNING, str(error))
+                        else:
+                            rep = list_replicas.get(ReplicaState.AVAILABLE, [])
+                            unavailable_rep = list_replicas.get(ReplicaState.TEMPORARY_UNAVAILABLE, [])
+                            logger(logging.INFO, 'File %s:%s can be recovered. Available sources : %s + Unavailable sources : %s' % (scope, name, str(rep), str(unavailable_rep)))
+                            try:
+                                update_rules_for_bad_replica(scope=scope, name=name, rse_id=rse_id, nowait=True)
+                                monitor.record_counter(name='necromancer.badfiles.recovering')
+                            except (DatabaseException, DatabaseError) as error:
+                                if re.match('.*ORA-00054.*', error.args[0]) or re.match('.*ORA-00060.*', error.args[0]) or 'ERROR 1205 (HY000)' in error.args[0]:
+                                    logger(logging.WARNING, 'Lock detected when handling request - skipping: %s', str(error))
+                                else:
+                                    logger(logging.ERROR, str(error))
 
-                tot_processed += len(replicas)
-                logger(logging.INFO, 'It took %s seconds to process %s replicas' % (str(time.time() - stime), str(len(replicas))))
-        except Exception:
-            exc_type, exc_value, exc_traceback = exc_info()
-            logger(logging.CRITICAL, ''.join(format_exception(exc_type, exc_value, exc_traceback)).strip())
+                    tot_processed += len(replicas)
+                    logger(logging.INFO, 'It took %s seconds to process %s replicas' % (str(time.time() - ttime), str(len(replicas))))
+            except Exception:
+                exc_type, exc_value, exc_traceback = exc_info()
+                logger(logging.CRITICAL, ''.join(format_exception(exc_type, exc_value, exc_traceback)).strip())
 
         if once:
             break
+        elif tot_processed == 0 or tot_bad_files == 0:
+            daemon_sleep(start_time=stime, sleep_time=sleep_time, graceful_stop=GRACEFUL_STOP, logger=logger)
 
     logger(logging.INFO, 'Graceful stop requested')
     heartbeat.die(executable, hostname, pid, hb_thread)

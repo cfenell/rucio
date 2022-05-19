@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2013-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,20 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2013-2019
-# - Martin Barisits <martin.barisits@cern.ch>, 2016-2021
-# - Joaquín Bogado <jbogado@linti.unlp.edu.ar>, 2018
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2019
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - Matt Snyder <msnyder@bnl.gov>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
 
 from datetime import datetime, timedelta
 
@@ -280,7 +266,7 @@ def test_archive_removal_impact_on_constituents(rse_factory, did_factory, mock_s
     scope = mock_scope
     account = root_account
 
-    # Create an 2 archives and 4 files:
+    # Create 2 archives and 4 files:
     # - One only exists in the first archive
     # - One in both, plus another replica, which is not in an archive
     # - One in both, plus another replica, which is not in an archive; and this replica has expired
@@ -325,7 +311,7 @@ def test_archive_removal_impact_on_constituents(rse_factory, did_factory, mock_s
 
     # Run reaper the first time.
     # the expired non-archive replica of c_with_expired_replica must be removed,
-    # but the did must not be remove and it must still remain in the dataset because
+    # but the did must not be removed, and it must still remain in the dataset because
     # it still has the replica from inside the archive
     assert replica_core.get_replica(rse_id=rse_id, **c_with_expired_replica)
     cache_region.invalidate()
@@ -372,7 +358,7 @@ def test_archive_removal_impact_on_constituents(rse_factory, did_factory, mock_s
 
     # Expire the second archive replica and run reaper another time
     # c_with_expired_replica is removed because its external replica got removed at previous step
-    # and it exist only inside the archive now.
+    # and it exists only inside the archive now.
     # If not open, Dataset2 will be removed because it will be empty.
     did_core.set_status(open=False, **dataset2)
     replica_core.set_tombstone(rse_id=rse_id, tombstone=datetime.utcnow() - timedelta(days=1), **archive2)

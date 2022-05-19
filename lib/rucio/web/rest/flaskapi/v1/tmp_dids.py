@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2016-2021 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,16 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2016
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2018-2021
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2018
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Muhammad Aditya Hilmy <didithilmy@gmail.com>, 2020
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
 
 from flask import Flask, Blueprint, request
 
@@ -33,14 +23,74 @@ class BulkDIDS(ErrorHandlingMethodView):
 
     def post(self):
         """
-        Bulk add temporary data identifiers.
-
-        .. :quickref: BulkDIDS; Bulk add temporary dids.
-
-        :<json list dids: A list of dids.
-        :status 201: Created.
-        :status 400: Cannot decode json parameter list.
-        :status 401: Invalid Auth Token.
+        ---
+        summary: Add Temporary Data Identifiers
+        description: Bulk adds temporary data identifiers.
+        tags:
+          - Temporary Data Identifiers
+        requestBody:
+          content:
+            application/json:
+              schema:
+                description: A list of temporary dids.
+                type: array
+                items:
+                  description: A temporary did.
+                  properties:
+                    rse:
+                      description: The name of the RSE.
+                      type: string
+                    rse_id:
+                      description: The id of the RSE. Can be specified instead of the RSE name.
+                      type: string
+                    scope:
+                      description: The scope.
+                      type: string
+                    parent_scope:
+                      description: The parent scope.
+                      type: string
+                    name:
+                      description: The name of the DID.
+                      type: string
+                    path:
+                      description: The path of the DID.
+                      type: string
+                    pfn:
+                      description: The pfn of the DID.
+                      type: string
+                    bytes:
+                      description: The size of the DID in bytes.
+                      type: integer
+                    md5:
+                      description: The md5 checksum of the DID.
+                      type: string
+                    adler32:
+                      description: The adler32 checksum of the DID.
+                      type: string
+                    guid:
+                      description: The guid of the DID.
+                      type: string
+                    events:
+                      description: The events of the DID.
+                      type: string
+                    parent_name:
+                      description: The name of the parent.
+                      type: string
+                    offset:
+                      description: The offset of the DID.
+                      type: integer
+        responses:
+          201:
+            description: Created
+            content:
+              application/json:
+                schema:
+                  type: string
+                  enum: ["Created"]
+          401:
+            description: Invalid Auth Token
+          406:
+            description: Not acceptable
         """
         dids = json_list()
         add_temporary_dids(dids=dids, issuer=request.environ.get('issuer'), vo=request.environ.get('vo'))

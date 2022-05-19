@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2013-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,20 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2013-2020
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2013-2018
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2014-2018
-# - Wen Guan <wen.guan@cern.ch>, 2014-2016
-# - Martin Barisits <martin.barisits@cern.ch>, 2016-2021
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018
-# - Matt Snyder <msnyder@bnl.gov>, 2019-2021
-# - Brandon White <bjwhite@fnal.gov>, 2019
-# - Nick Smith <nick.smith@cern.ch>, 2020
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2020-2021
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
 
 """
 Conveyor is a daemon to manage file transfers.
@@ -55,7 +41,7 @@ from rucio.common.utils import dict_chunks
 from rucio.core import transfer as transfer_core, request as request_core
 from rucio.core.monitor import record_timer, record_counter
 from rucio.db.sqla.constants import RequestState, RequestType
-from rucio.daemons.conveyor.common import run_conveyor_daemon
+from rucio.daemons.common import run_daemon
 from rucio.transfertool.fts3 import FTS3Transfertool
 from rucio.transfertool.globus import GlobusTransferTool
 
@@ -148,7 +134,7 @@ def poller(once=False, activities=None, sleep_time=60,
     if FILTER_TRANSFERTOOL:
         executable += ' --filter-transfertool ' + FILTER_TRANSFERTOOL
 
-    run_conveyor_daemon(
+    run_daemon(
         once=once,
         graceful_stop=graceful_stop,
         executable=executable,

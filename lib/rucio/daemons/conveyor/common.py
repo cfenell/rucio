@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2014-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,28 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2014-2020
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2014-2020
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2014-2016
-# - Martin Barisits <martin.barisits@cern.ch>, 2014-2020
-# - Wen Guan <wen.guan@cern.ch>, 2014-2016
-# - Joaquín Bogado <jbogado@linti.unlp.edu.ar>, 2016
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2016-2021
-# - Brian Bockelman <bbockelm@cse.unl.edu>, 2018
-# - Eric Vaandering <ewv@fnal.gov>, 2018-2020
-# - dciangot <diego.ciangottini@cern.ch>, 2018
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - Matt Snyder <msnyder@bnl.gov>, 2019
-# - Gabriele Fronze' <gfronze@cern.ch>, 2019
-# - Jaroslav Guenther <jaroslav.guenther@cern.ch>, 2019-2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Nick Smith <nick.smith@cern.ch>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
 
 """
 Methods common to different conveyor submitter daemons.
@@ -43,18 +21,13 @@ from __future__ import division
 
 import datetime
 import logging
-import os
-import socket
-import threading
 import time
 from typing import TYPE_CHECKING
 
 from rucio.common.config import config_get, config_get_int
 from rucio.common.exception import (InvalidRSEExpression, TransferToolTimeout, TransferToolWrongAnswer, RequestNotFound,
                                     DuplicateFileTransferSubmission, VONotFound)
-from rucio.common.logging import formatted_logger
-from rucio.common.utils import PriorityQueue
-from rucio.core import heartbeat, request as request_core, transfer as transfer_core
+from rucio.core import request as request_core, transfer as transfer_core
 from rucio.core.monitor import record_counter, record_timer
 from rucio.core.replica import add_replicas, tombstone_from_delay, update_replica_state
 from rucio.core.request import set_request_state, queue_requests
@@ -71,114 +44,6 @@ if TYPE_CHECKING:
     from rucio.core.transfer import DirectTransferDefinition
     from rucio.transfertool.transfertool import Transfertool, TransferToolBuilder
     from sqlalchemy.orm import Session
-
-
-class HeartbeatHandler:
-    """
-    Simple contextmanager which sets a heartbeat and associated logger on entry and cleans up the heartbeat on exit.
-    """
-
-    def __init__(self, executable, renewal_interval, logger_prefix=None):
-        """
-        :param executable: the executable name which will be set in heartbeats
-        :param renewal_interval: the interval at which the heartbeat will be renewed in the database.
-        Calls to live() in-between intervals will re-use the locally cached heartbeat.
-        :param logger_prefix: the prefix to be prepended to all log messages
-        """
-        self.executable = executable
-        self.renewal_interval = renewal_interval
-        self.older_than = renewal_interval * 10 if renewal_interval and renewal_interval > 0 else None  # 10 was chosen without any particular reason
-        self.logger_prefix = logger_prefix or executable
-
-        self.hostname = socket.getfqdn()
-        self.pid = os.getpid()
-        self.hb_thread = threading.current_thread()
-
-        self.logger = None
-        self.last_heart_beat = None
-        self.last_time = None
-
-    def __enter__(self):
-        heartbeat.sanity_check(executable=self.executable, hostname=self.hostname)
-        self.live()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.last_heart_beat:
-            heartbeat.die(self.executable, self.hostname, self.pid, self.hb_thread)
-            if self.logger:
-                self.logger(logging.INFO, 'Heartbeat cleaned up')
-
-    def live(self):
-        """
-        :return: a tuple: <the number of the current worker>, <total number of workers>, <decorated logger>
-        """
-        if not self.last_time or self.last_time < datetime.datetime.now() - datetime.timedelta(seconds=self.renewal_interval):
-            if self.older_than:
-                self.last_heart_beat = heartbeat.live(self.executable, self.hostname, self.pid, self.hb_thread, older_than=self.older_than)
-            else:
-                self.last_heart_beat = heartbeat.live(self.executable, self.hostname, self.pid, self.hb_thread)
-
-            prefix = '%s[%i/%i]: ' % (self.logger_prefix, self.last_heart_beat['assign_thread'], self.last_heart_beat['nr_threads'])
-            self.logger = formatted_logger(logging.log, prefix + '%s')
-
-            if not self.last_time:
-                self.logger(logging.DEBUG, 'First heartbeat set')
-            else:
-                self.logger(logging.DEBUG, 'Heartbeat renewed')
-            self.last_time = datetime.datetime.now()
-
-        return self.last_heart_beat['assign_thread'], self.last_heart_beat['nr_threads'], self.logger
-
-
-def run_conveyor_daemon(once, graceful_stop, executable, logger_prefix, partition_wait_time, sleep_time, run_once_fnc, activities=None):
-
-    with HeartbeatHandler(executable=executable, renewal_interval=sleep_time - 1, logger_prefix=logger_prefix) as heartbeat_handler:
-        logger = heartbeat_handler.logger
-        logger(logging.INFO, 'started')
-
-        if partition_wait_time:
-            graceful_stop.wait(partition_wait_time)
-
-        activity_next_exe_time = PriorityQueue()
-        for activity in activities or [None]:
-            activity_next_exe_time[activity] = time.time()
-
-        while not graceful_stop.is_set() and activity_next_exe_time:
-            if once:
-                activity = activity_next_exe_time.pop()
-                time_to_sleep = 0
-            else:
-                activity = activity_next_exe_time.top()
-                time_to_sleep = activity_next_exe_time[activity] - time.time()
-
-            if time_to_sleep > 0:
-                if activity:
-                    logger(logging.DEBUG, 'Switching to activity %s and sleeping %s seconds', activity, time_to_sleep)
-                else:
-                    logger(logging.DEBUG, 'Sleeping %s seconds', time_to_sleep)
-                graceful_stop.wait(time_to_sleep)
-            else:
-                if activity:
-                    logger(logging.DEBUG, 'Switching to activity %s', activity)
-                else:
-                    logger(logging.DEBUG, 'Starting next iteration')
-
-            _, _, logger = heartbeat_handler.live()
-
-            must_sleep = True
-            try:
-                must_sleep = run_once_fnc(activity=activity, heartbeat_handler=heartbeat_handler)
-            except Exception:
-                logger(logging.CRITICAL, "Exception", exc_info=True)
-                if once:
-                    raise
-
-            if not once:
-                if must_sleep:
-                    activity_next_exe_time[activity] = time.time() + sleep_time
-                else:
-                    activity_next_exe_time[activity] = time.time() + 1
 
 
 @transactional_session
@@ -316,6 +181,10 @@ def __assign_paths_to_transfertool_and_create_hops(
         # Prioritize the paths which need less transfertool transitions.
         # Ideally, the entire path should be submitted to a single transfertool
         for transfer_path, tt_assignment in sorted(tt_assignments, key=lambda t: len(t[1])):
+            if not tt_assignment:
+                logger(logging.INFO, '%s: None of the transfertools can submit the request: %s', request_id, [c.__name__ for c in transfertool_classes])
+                continue
+
             # Set the 'transfertool' field on the intermediate hops which should be created in the database
             for sub_path, tt_builder in tt_assignment:
                 if tt_builder:

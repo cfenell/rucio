@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2012-2022 CERN
+# Copyright European Organization for Nuclear Research (CERN) since 2012
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,39 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Authors:
-# - Vincent Garonne <vincent.garonne@cern.ch>, 2012-2018
-# - Thomas Beermann <thomas.beermann@cern.ch>, 2012-2021
-# - Mario Lassnig <mario.lassnig@cern.ch>, 2012-2021
-# - Cedric Serfon <cedric.serfon@cern.ch>, 2013-2022
-# - Ralph Vigne <ralph.vigne@cern.ch>, 2013
-# - Joaquín Bogado <jbogado@linti.unlp.edu.ar>, 2015-2018
-# - Martin Barisits <martin.barisits@cern.ch>, 2016-2022
-# - Brian Bockelman <bbockelm@cse.unl.edu>, 2018
-# - Tobias Wegner <twegner@cern.ch>, 2018-2019
-# - Hannes Hansen <hannes.jakob.hansen@cern.ch>, 2018-2019
-# - Tomas Javurek <tomas.javurek@cern.ch>, 2019-2020
-# - Andrew Lister <andrew.lister@stfc.ac.uk>, 2019
-# - James Perry <j.perry@epcc.ed.ac.uk>, 2019-2021
-# - Gabriele Fronze' <gfronze@cern.ch>, 2019
-# - Jaroslav Guenther <jaroslav.guenther@cern.ch>, 2019-2020
-# - Eli Chadwick <eli.chadwick@stfc.ac.uk>, 2020
-# - Patrick Austin <patrick.austin@stfc.ac.uk>, 2020
-# - root <root@escape-rucio-dev-oidc-r.cern.ch>, 2020
-# - Benedikt Ziemons <benedikt.ziemons@cern.ch>, 2020-2021
-# - Mayank Sharma <mayank.sharma@cern.ch>, 2021
-# - Rahul Chauhan <omrahulchauhan@gmail.com>, 2021
-# - Radu Carpa <radu.carpa@cern.ch>, 2021-2022
-# - Anil Panta <47672624+panta-123@users.noreply.github.com>, 2021
-# - Ilija Vukotic <ivukotic@cern.ch>, 2021
-# - David Población Criado <david.poblacion.criado@cern.ch>, 2021
-# - martynia <janusz.martyniak@googlemail.com>, 2021-2022
-# - jdierkes <joel.dierkes@cern.ch>, 2021
-# - Rakshita Varadarajan <rakshitajps@gmail.com>, 2021
-# - Rob Barnsley <robbarnsley@users.noreply.github.com>, 2021
-# - Igor Mandrichenko <ivm@fnal.gov>, 2021
-# - Joel Dierkes <joel.dierkes@cern.ch>, 2021
 
 from __future__ import absolute_import, print_function
 
@@ -285,11 +252,11 @@ def adler32(file):
     adler = 1
 
     can_mmap = False
-    try:
-        with open(file, 'r+b') as f:
-            can_mmap = True
-    except:
-        pass
+    # try:
+    #    with open(file, 'r+b') as f:
+    #        can_mmap = True
+    # except:
+    #    pass
 
     try:
         # use mmap if possible
@@ -816,7 +783,7 @@ def extract_scope(did, scopes=None, default_extract=_DEFAULT_EXTRACT):
     if not _loaded_policy_package_scope_algorithms:
         register_policy_package_algorithms('scope', _EXTRACT_SCOPE_ALGORITHMS)
         _loaded_policy_package_scope_algorithms = True
-    extract_scope_convention = config_get('common', 'extract_scope', False, None)
+    extract_scope_convention = config_get('common', 'extract_scope', False, None) or config_get('policy', 'extract_scope', False, None)
     if extract_scope_convention is None or extract_scope_convention not in _EXTRACT_SCOPE_ALGORITHMS:
         extract_scope_convention = default_extract
     return _EXTRACT_SCOPE_ALGORITHMS[extract_scope_convention](did=did, scopes=scopes)
@@ -1597,7 +1564,7 @@ class retry:
     def __init__(self, func, *args, **kwargs):
         '''
         :param func: a method that should be executed with retries
-        :param args parametres of the func
+        :param args: parametres of the func
         :param kwargs: key word arguments of the func
         '''
         self.func, self.args, self.kwargs = func, args, kwargs
