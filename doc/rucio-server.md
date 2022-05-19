@@ -86,38 +86,68 @@ and can be installed like so
 
 ## Install SSL certificates and utilities
 
+### Certificate authorities and CRLs
+
 For https and certificate based authentication to work it is of
 supreme importance to get SSL certificates and certificate authorites
-(CAs) right.
+(CAs) right. You will need to install the IGTF Trust Anchor distribution.
+On recent versions of Debian and Ubuntu, up to date versions are available in the standard repositories (but beware, Debian installs them as symlinks to /usr/share, which is inconvenient if you ever want to mount the certificates directory in a Docker). To install from there, just
 
-Checkme: required packages
+    #apt install igtf-policy-classic igtf-policy-mics
+
+Preferrably, use the official and most up to date distribution by inserting into your apt sources:
+
+    deb http://repository.egi.eu/sw/production/cas/1/current egi-igtf core
+    
+Then you will need the public GPG key for the verification to work:
+
+    $curl https://dl.igtf.net/distribution/igtf/current/GPG-KEY-EUGridPMA-RPM-3  | sudo apt-key add
+
+Next you can run (CA metapackages here are, obviously, named differently than in the standard distribution)
+
+    #apt update
+    #apt install ca-policy-egi-core ca-policy-igtf-classic ca-policy-igtf-mics (Check: all necessary?)
+     
 
 After a successful install, CA certificates should be stored in
 
     /etc/grid-security/certificates
 
+For certificate validation to work, it is also important to have up to date certificate revocation lists (CRLs).
+To that end, install and run
+   #apt install fetch-crl
+   #fetch-crl  (the install should also add a cron.d entry) 
+
+### Host certificate
+
 Obtain a public host certificate that matches the hostname of the
 server. You have to create a certificate signing request (CSR) and
-request a certificate at YOUR certificate authority so the procedure
+request a certificate from *your* certificate authority, so the procedure
 may vary.  Save the certificate chain file (host certificate before
 intermediate certificates) and unencrypted private key in for example
-    
-	 /etc/grid-security/hostcert.pem
-	 /etc/grid-security/hostkey.pem
-	 
+    /etc/grid-security/hostcert.pem
+    /etc/grid-security/hostkey.pem
+ 
+### Personal certificate
 For certificate-based authentication, also get a personal certificate
-(or export the one you have) and make sure it is saved on the system where the client will run as
-    
-	 $HOME/.globus/usercert.pem and
-	 $HOME/.globus/userkey.pem
-	 
+and make sure it is saved on the system where the client will run as
+    $HOME/.globus/usercert.pem and
+    $HOME/.globus/userkey.pem
+ 
+You can also export the personal certificate from your web browser if you already have one there; it should work if you save it as
+    $HOME/.globus/usercred.p12
+
 This personal certificate will later be used to create a short-lived
 *grid proxy certificate* for user authentication. With CAs properly
 configured, the proxy certificate will allow the https connection to
 transfer your identity (certificate Distinguished Name) securely to
-the server.
+the server. This uses the following utility:
+    $grid-proxy-init
+You will probably have to
+    apt install globus-proxy-utils
 
-Add: instructions on certificate export and **grid-proxy-init**
+If your *userkey.pem* is encrypted, as it normally is, this will ask for the password. The proxy certificate will be saved in /tmp/x509up_u<UID> (where <UID> is your numeric user ID).
+
 
 # Get the Rucio software
 
@@ -300,28 +330,20 @@ should be set in **rucio.cfg** [clients]. Also make sure that any
 firewalls allow connections between client and server.
 
 With your client certificate and certificate utility software properly
-set up, generate a proxy certificate with
+set up, generate a proxy certificate as introduced above with
 
-    $grid-proxy-init
-	
-or (as is the case in the EISCAT local install, to allow authentication to dCache storage with VO attributes)
-
-    $voms-proxy-init --voms <my.vo>:/<my>/<group>/Role=<my-role>
+    $grid-proxy-init	
 
 Next, either set certificate and user details in **rucio.cfg** [clients] section, or
-
-    $export X509_USER_PROXY=/tmp/x509up_u<nnnn>
-
-Insert the proper name of your generated proxy certificate file here --- typically it ends with your UID number e.g. 1000.
-
+    $export X509_USER_PROXY=/tmp/x509up_u<UID>	
+(typically /tmp/x509up_u1000 --- check your numeric UID)
     $export RUCIO_USER=root
 	
 Now the command line client **/usr/local/bin/rucio** should be able to connect to the server:
 
-
     $rucio ping
 
-This should reply with the version number, e.g. 1.27.0
+This should reply with the version number, e.g. 1.28.4
 	
 	$rucio whoami
 	
