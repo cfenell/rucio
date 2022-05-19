@@ -16,15 +16,11 @@ with pip.
 
 ## Install gfal2 library
 
-It turned out that only the unstable version is compatible with the
-most recent Python binding sources (*develop* branch) At first I installed the stable
-version, whereafter compilation as below failed with error messages
-about undefined types or missing headers. Thus, use a stable git branch of gfal2-python instead
-OR on Debian, install the latest gfal2 packages
-like this from the *sid* repository.
+The *gfal2* libraries are available as Debian packages courtesy of Mattias Ellert, Uppsala University. Thus they can be installed as usual with
 
+    apt install gfal2 libgfal2-dev
 
-    sudo apt -t sid install gfal2 libgfal2-dev
+The metapackage *gfal2* installs the library and all file transfer protocol plugins. Remember to also install the dev package as above.
 
 
 ## Install gfal2 Python bindings
@@ -44,16 +40,15 @@ necessary to run:
 Otherwise the procedure is the usual one:
 
     git clone git@github.com:cern-fts/gfal2-python
-	
-	cd gfal2-python
+    cd gfal2-python
 	
 Once again, check the README and any other documentation regarding the
 dependencies you have to install.
-If you don't have the latest gfal2 libraries as in Debian unstable:
+Note, the default git branch (develop) will probably fail to compile with the latest stable version of the libraries, so you will have to
 
-        git checkout master (or another stable branch, but not develop)
-
-Then install like this
+        git checkout master 
+	
+(or a tagged stable release). Then install like this
 
 	[sudo] pip install .
 
@@ -87,9 +82,7 @@ tools from the command line. Some examples (remember to create a proxy
 certificate first or set the path to your client certificate):
 
     gfal-ls gsiftp://my.gridftp.server/home/user/ 
-	
-	gfal-copy somefile.dat gsiftp://my.gridftp.server/home/user/somefile.dat
-
+    gfal-copy somefile.dat gsiftp://my.gridftp.server/home/user/somefile.dat
 
 Note for GEANT Sectigo certificate users: It is important that the
 host certificate of the GridFTP server is of the *IGTF* grid
