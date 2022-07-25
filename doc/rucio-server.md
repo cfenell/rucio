@@ -391,7 +391,7 @@ In order to associate the defined RSE with actual physical storage, at least one
 
 The **rucio-admin add-protocol** command is used to add the storage. Required arguments include hostname, scheme and port of the storage server, Python implementation (module name) to use for file transfer, etc. As an example, this configures a gridFTP enabled dCache server as storage for the RSE *E3D_DCACHE*:
 
-    rucio-admin -v -u root rse add-protocol --hostname store1.eiscat3d.se --scheme gsiftp --impl rucio.rse.protocols.gfal.Default --port 2811 --prefix '/home/tester/' --extended-attributes-json '{"user":" archive"}' --domain-json '{"lan": {"read": 0, "write": 0, "delete": 0}, "wan": {"read": 1, "write": 1, "delete": 1, "third_party_copy": 1}}' E3D_DCACHE
+    rucio-admin -v -u root rse add-protocol --hostname store1.eiscat3d.se --scheme gsiftp --impl rucio.rse.protocols.gfal.Default --port 2811 --prefix '/home/tester/' --extended-attributes-json '{"user":" archive"}' --domain-json '{"lan": {"read": 0, "write": 0, "delete": 0}, "wan": {"read": 1, "write": 1, "delete": 1, "third_party_copy_read": 1, "third_party_copy_write": 1}}' E3D_DCACHE
  
 An "ugly" part of this is that the RSE must be configured as **writable from the wan domain**. This is not enabled by default and the only way to configure it at present is to provide the above extra configuration in JSON format.
 
@@ -422,7 +422,7 @@ Now the file should be visible in the dataset: (Checkme: run required daemons fi
 	
 You should also be able to download the dataset:
 
-    $rucio download -u root -v TEST:MYDATA
+    $rucio download TEST:MYDATA
 	
 If everything works this will create a subdirectory MYDATA with the file my-file.dat
 	
